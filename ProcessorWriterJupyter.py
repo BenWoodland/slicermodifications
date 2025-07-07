@@ -71,19 +71,31 @@ def distance_calculator(df):
 def validator(unprinted_lines, df):
     for line_id_unprinted in unprinted_lines:
         current_line_coords = df[df["line_id"]==line_id_unprinted][["x","y"]]
+        current_line_xyz = df[df["line_id"]==line_id_unprinted][["x","y","z"]]
         current_line_linestring = LineString(current_line_coords.to_numpy())
 
         intersections = []
+        nodal_intersections = []
         for line_id in df["line_id"].unique():
             if line_id == line_id_unprinted:
                 continue
             compared_line = df[df["line_id"] == line_id][["x","y"]]
+            compared_line_xyz = df[df["line_id"]==line_id][["x","y","z"]]
             if len(compared_line) <2:
                 continue
             compared_line_linestring = LineString(compared_line.to_numpy())
             if current_line_linestring.intersects(compared_line_linestring):
                 intersections.append(line_id)
-        print(f"{line_id_unprinted} intersects with {intersections}")
+                intersection = current_line_linestring.intersection(compared_line_linestring)
+                if intersection.geom_type == "Point":
+                    intersection_x = intersection.x
+                    print(current_line_xyz[current_line_xyz["x"] == intersection.x]["z"]) =
+                elif intersection.geom_type == "Multipoint":
+                    continue
+                # if current_line_xyz[current_line_xyz["x"] == intersection.x]["z"] = df
+        # print(f"{line_id_unprinted} intersects with {intersections}, with these{nodal_intersections} occuring at nodes and ")
+
+
 
 
 def eulerficator(df, terminal_points, nodes):
