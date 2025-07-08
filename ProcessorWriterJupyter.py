@@ -87,6 +87,7 @@ def angle_calculator(line_string_1, line_string_2):
 
 def validator(unprinted_lines, df):
     """"Checks if the printing of each line affects the printing of future lines and returns those that are able to be printed without affecting the printing of subsequent lines"""
+    valid_lines= []
     for line_id_test in unprinted_lines: #for each unprinted line compares test line against the other unprinted lines
         current_line_coords = df[df["line_id"]==line_id_test][["x","y"]]
         #x and y coordinates of the line that is being checked
@@ -148,24 +149,30 @@ def validator(unprinted_lines, df):
                             compared_line_zcoords_at20 = compared_line_xyz[compared_line_xyz["x"] == compared_line_xcoords_at20]["z"].unique()
                             if current_line_zcoords_at20 < compared_line_zcoords_at20:
                                 print("current line is valid")
+                                valid_lines.append(line_id_test)
+
                             else:
-                                print("current lin is invalid")
+                                print("current line is invalid")
                         else:
-                            print("angle is more than 30")
+                            print("current line is valid")
+                            valid_lines.append(lineid_test)
 
                     else:
-                        print("interects at midline")
-
+                        print("intserects at midline")
+                        if intersection_compared_line_z > intersection_current_line_z:
+                            print("current line is valid")
+                            valid_linens.append(lineid_test)
+                        else:
+                            print("current line is invalid")
 
 
                 elif intersection.geom_type == "Multipoint":
                     #if the lines intersect more than once
 
-                    print("multipoint")
-                # if current_line_xyz[current_line_xyz["x"] == intersection.x]["z"] = df
-        # print(f"{line_id_test} intersects with {intersections}, with these{nodal_intersections} occuring at nodes and ")
-
-
+                    print("yoooo")
+            else:
+                if current_line_linstring.distance(compared_line_linestring) <0.5
+    return valid_lines
 
 def eulerficator(df, terminal_points, nodes):
     terminal_points_nogroups = terminal_points.reset_index()
