@@ -68,33 +68,102 @@ def distance_calculator(df):
     df['distance_from_last'] = distances
     return df
 
+def vector_calculator(line_string):
+    x1, y1 = line_string.coords[0]
+    x2, y2 = line_string.coords[1]
+    v = np.array([x2-x1,y2-y1])
+    return v
+def angle_calculator(line_string_1, line_string_2):
+    v1 = vector_calculator(line_string_1)
+    v2 = vector_calculator(line_string_2)
+
+    v1_norm = v1/np.linalg.norm(v1)
+    v2_norm = v2/ np.linalg.norm(v2)
+
+    dot_product = np.clip(np.dot(v1_norm, v2_norm), -1.0, 1.0)
+    radian_angle = np.arccos(dot_product)
+    degree_angle = np.degrees(radian_angle)
+    return degree_angle
+
 def validator(unprinted_lines, df):
-    for line_id_unprinted in unprinted_lines:
-        current_line_coords = df[df["line_id"]==line_id_unprinted][["x","y"]]
-        current_line_xyz = df[df["line_id"]==line_id_unprinted][["x","y","z"]]
+    """"Checks if the printing of each line affects the printing of future lines and returns those that are able to be printed without affecting the printing of subsequent lines"""
+    for line_id_test in unprinted_lines: #for each unprinted line compares test line against the other unprinted lines
+        current_line_coords = df[df["line_id"]==line_id_test][["x","y"]]
+        #x and y coordinates of the line that is being checked
+
+        current_line_xyz = df[df["line_id"]==line_id_test][["x","y","z"]]
+        #x,y and z coordinates of the line that is being checked
+
         current_line_linestring = LineString(current_line_coords.to_numpy())
+        #converts xy coordinates to a line string making it simple to check if they intersect in z and y
 
         intersections = []
         nodal_intersections = []
-        for line_id in df["line_id"].unique():
-            if line_id == line_id_unprinted:
+        for line_id in unprinted_lines:
+            #loops through every line in unprinted lines to compare our test line to every other line
+
+            if line_id == line_id_test:
                 continue
+                #checks if the line ID is the current test line if so can be skipped
+
             compared_line = df[df["line_id"] == line_id][["x","y"]]
             compared_line_xyz = df[df["line_id"]==line_id][["x","y","z"]]
+            #for the comparison line our test line is being compared to, create a df of xy and xyz coordinates
+
             if len(compared_line) <2:
                 continue
+                #if the line is only one point (unlikely) it is skipped
+
             compared_line_linestring = LineString(compared_line.to_numpy())
+            #comparison line converted to a line string to make it easy to check intersection
+
             if current_line_linestring.intersects(compared_line_linestring):
                 intersections.append(line_id)
                 intersection = current_line_linestring.intersection(compared_line_linestring)
-                if intersection.geom_type == "Point":
-                    intersection_x = intersection.x
-                    print(current_line_xyz[current_line_xyz["x"] == intersection.x]["z"]) =
-                elif intersection.geom_type == "Multipoint":
-                    continue
-                # if current_line_xyz[current_line_xyz["x"] == intersection.x]["z"] = df
-        # print(f"{line_id_unprinted} intersects with {intersections}, with these{nodal_intersections} occuring at nodes and ")
+                #if intersections occur, the line id of the comparison line is added to the list
+                #defines the intersection as the location
 
+                if intersection.geom_type == "Point":
+                    #if the lines intersect once
+
+                    intersection_x = intersection.x
+                    intersection_current_line_z = current_line_xyz[current_line_xyz["x"] == intersection.x]["z"].unique()
+                    #finds the row on the current test line where the x coordinate = intersection x coordinate and retrieves the z value, as line jumps so small, frequently gives 2 x values and therefore 2 y values so unique is applied
+
+                    intersection_compared_line_z = compared_line_xyz[compared_line_xyz["x"] == intersection.x]["z"].unique()
+                    # does the same for the compare line
+
+                    if intersection_current_line_z == intersection_compared_line_z:
+                        #if z coordinates are equal they interect at a start or endpoint
+                        print("intersects at start/endpoint")
+                        if angle_calculator(current_line_linestring, compared_line_linestring) < 30:
+                            #compares angle between if its less than 30 then checks to see if the next part of the current test line is below
+                            print("angle is less than 30")
+
+                            current_line_xcoords_at20 = ((list(current_line_linestring.coords)[:21])[-3])[0]
+                            compared_line_xcoords_at20 = ((list(compared_line_linestring.coords)[:21])[-3])[0]
+                            #retrieves the x coordinate of 20th point on line, or if the line is shorter 2 points from the end
+                            #This is to compare if line is below and an arbitrary point down the line was required
+                            current_line_zcoords_at20 = current_line_xyz[current_line_xyz["x"] == current_line_xcoords_at20]["z"].unique()
+                            compared_line_zcoords_at20 = compared_line_xyz[compared_line_xyz["x"] == compared_line_xcoords_at20]["z"].unique()
+                            if current_line_zcoords_at20 < compared_line_zcoords_at20:
+                                print("current line is valid")
+                            else:
+                                print("current lin is invalid")
+                        else:
+                            print("angle is more than 30")
+
+                    else:
+                        print("interects at midline")
+
+
+
+                elif intersection.geom_type == "Multipoint":
+                    #if the lines intersect more than once
+
+                    print("multipoint")
+                # if current_line_xyz[current_line_xyz["x"] == intersection.x]["z"] = df
+        # print(f"{line_id_test} intersects with {intersections}, with these{nodal_intersections} occuring at nodes and ")
 
 
 
