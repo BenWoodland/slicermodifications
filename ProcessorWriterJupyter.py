@@ -88,6 +88,7 @@ def angle_calculator(line_string_1, line_string_2):
 def validator(unprinted_lines, df):
     """"Checks if the printing of each line affects the printing of future lines and returns those that are able to be printed without affecting the printing of subsequent lines"""
     valid_lines= []
+    lines_to_remove = []
     for line_id_test in unprinted_lines: #for each unprinted line compares test line against the other unprinted lines
         current_line_coords = df[df["line_id"]==line_id_test][["x","y"]]
         #x and y coordinates of the line that is being checked
@@ -98,8 +99,7 @@ def validator(unprinted_lines, df):
         current_line_linestring = LineString(current_line_coords.to_numpy())
         #converts xy coordinates to a line string making it simple to check if they intersect in z and y
 
-        intersections = []
-        nodal_intersections = []
+
         for line_id in unprinted_lines:
             #loops through every line in unprinted lines to compare our test line to every other line
 
@@ -119,7 +119,6 @@ def validator(unprinted_lines, df):
             #comparison line converted to a line string to make it easy to check intersection
 
             if current_line_linestring.intersects(compared_line_linestring):
-                intersections.append(line_id)
                 intersection = current_line_linestring.intersection(compared_line_linestring)
                 #if intersections occur, the line id of the comparison line is added to the list
                 #defines the intersection as the location
@@ -132,9 +131,12 @@ def validator(unprinted_lines, df):
                     #finds the row on the current test line where the x coordinate = intersection x coordinate and retrieves the z value, as line jumps so small, frequently gives 2 x values and therefore 2 y values so unique is applied
 
                     intersection_compared_line_z = compared_line_xyz[compared_line_xyz["x"] == intersection.x]["z"].unique()
+                    print(intersection_compared_line_z)
                     # does the same for the compare line
+                    if len(intersection_current_line_z) == 0 or len(intersection_compared_line_z) == 0:
+                        continue
 
-                    if intersection_current_line_z == intersection_compared_line_z:
+                    if np.array_equal(intersection_compared_line_z,intersection_current_line_z):
                         #if z coordinates are equal they interect at a start or endpoint
                         print("intersects at start/endpoint")
                         if angle_calculator(current_line_linestring, compared_line_linestring) < 30:
@@ -147,21 +149,25 @@ def validator(unprinted_lines, df):
                             #This is to compare if line is below and an arbitrary point down the line was required
                             current_line_zcoords_at20 = current_line_xyz[current_line_xyz["x"] == current_line_xcoords_at20]["z"].unique()
                             compared_line_zcoords_at20 = compared_line_xyz[compared_line_xyz["x"] == compared_line_xcoords_at20]["z"].unique()
-                            if current_line_zcoords_at20 < compared_line_zcoords_at20:
+                            if len(current_line_zcoords_at20) and len(compared_line_zcoords_at20) and current_line_zcoords_at20[0] < compared_line_zcoords_at20[0]:
                                 print("current line is valid")
                                 valid_lines.append(line_id_test)
-
+                                lines_to_remove.append(line_id_test)
+                                break
                             else:
                                 print("current line is invalid")
                         else:
                             print("current line is valid")
-                            valid_lines.append(lineid_test)
-
+                            valid_lines.append(line_id_test)
+                            lines_to_remove.append(line_id_test)
+                            break
                     else:
                         print("intserects at midline")
                         if intersection_compared_line_z > intersection_current_line_z:
                             print("current line is valid")
-                            valid_linens.append(lineid_test)
+                            valid_lines.append(line_id_test)
+                            lines_to_remove.append(line_id_test)
+                            break
                         else:
                             print("current line is invalid")
 
@@ -169,16 +175,27 @@ def validator(unprinted_lines, df):
                 elif intersection.geom_type == "Multipoint":
                     #if the lines intersect more than once
 
-                    print("yoooo")
+                    print("multipoint")
             else:
-                if current_line_linstring.distance(compared_line_linestring) <0.5
+                if current_line_linestring.distance(compared_line_linestring) > 0.5:
+                    valid_lines.append(line_id_test)
+                    lines_to_remove.append(line_id_test)
+                    break
+    # for line in lines_to_remove:
+    #     if line in unprinted_lines:
+    #         unprinted_lines.remove(line)
+
     return valid_lines
 
 def eulerficator(df, terminal_points, nodes):
     terminal_points_nogroups = terminal_points.reset_index()
     clusters = terminal_points_nogroups['cluster'].unique()
     lines = terminal_points_nogroups['line_id'].unique()
-
+    # print(terminal_points)
+    # print("----------")
+    # print(terminal_points_nogroups)
+    # print(nodes)
+    # print(df)
     # Run through each cluster and create two dictionaries
     # 1 - cluster numbers as key and the connecting lines as values
     # 2 - cluster numbers as key and the number of connecting nodes as values
@@ -195,66 +212,80 @@ def eulerficator(df, terminal_points, nodes):
     node_order = []
     node_order_grouped = []
     while len(line_order) < len(lines):
-        current_line_lines = []
-        current_line_nodes = []
+
 
         # Sort lines by height order - bottom up
         min_z = df.groupby('line_id')['z'].min()
         heightsorted_line_ids = min_z.sort_values().index.tolist()
         unprinted_lines = [n for n in heightsorted_line_ids if n not in line_order]
-        print(df)
+        # print(df)
         ### where the validator goes###
-        validator(unprinted_lines, df)
+
+        valid_lines = validator(unprinted_lines, df)
+        #add remove valid lines from unprinted lines
         # Pick the unprinted line with the lowest z-value to start with
-        next_line = unprinted_lines[0]
-        line_order.append(next_line)
-        current_line_lines.append(next_line)
-        unprinted_lines = unprinted_lines[1:]  # Remove the printed line from the list of remaining lines
 
-        # Calculate which node you're at - it's the other node to which next_line is connected
-        connected_nodes = terminal_points.loc[next_line]['cluster'].values
+        while len(valid_lines)>0:
+            current_line_lines = []
+            current_line_nodes = []
+            next_line = valid_lines[0]
 
-        # Start at node with lower z-value - record as first node of this line
-        start_node = nodes.loc[connected_nodes]['z'].idxmin()
-        current_line_nodes.append(start_node)
-        node_order.append(start_node)
-
-        # Find node at other end of line
-        end_node = connected_nodes[connected_nodes != start_node][0]
-        current_line_nodes.append(end_node)
-        node_order.append(end_node)
-
-        connected_lines = cluster_dict[end_node]  # Lines connected to end node
-        connected_lines = [n for n in unprinted_lines if
-                           n in connected_lines]  # List unprinted connected lines in height-order
-        while len(connected_lines) > 0:
-            # Pick next line based on lowest z_min
-            next_line = connected_lines[0]
             line_order.append(next_line)
             current_line_lines.append(next_line)
+            valid_lines = valid_lines[1:]  # Remove the printed line from the list of remaining lines
             unprinted_lines.remove(next_line)
-
-            # Calculate which node you've moved to
+            # Calculate which node you're at - it's the other node to which next_line is connected
             connected_nodes = terminal_points.loc[next_line]['cluster'].values
-            start_node = end_node
+
+            # Start at node with lower z-value - record as first node of this line
+            start_node = nodes.loc[connected_nodes]['z'].idxmin()
+            current_line_nodes.append(start_node)
+            node_order.append(start_node)
+
+            # Find node at other end of line
             end_node = connected_nodes[connected_nodes != start_node][0]
             current_line_nodes.append(end_node)
+            node_order.append(end_node)
 
-            connected_lines = cluster_dict[end_node]
+            connected_lines = cluster_dict[end_node]  # Lines connected to end node
+            connected_lines = [n for n in valid_lines if
+                               n in connected_lines]  # List unprinted connected lines in height-order
+            while len(connected_lines) > 0:
+                # Pick next line based on lowest z_min
+                next_line = connected_lines[0]
+                line_order.append(next_line)
+                current_line_lines.append(next_line)
+                valid_lines.remove(next_line)
+                unprinted_lines.remove(next_line)
+                # Calculate which node you've moved to
+                connected_nodes = terminal_points.loc[next_line]['cluster'].values
+                start_node = end_node
+                end_node = connected_nodes[connected_nodes != start_node][0]
+                current_line_nodes.append(end_node)
 
-            # Remove lines that have already been printed
-            connected_lines = [n for n in unprinted_lines if n in connected_lines]
+                connected_lines = cluster_dict[end_node]
 
-        line_order_grouped.append(current_line_lines)
-        node_order_grouped.append(current_line_nodes)
+                # Remove lines that have already been printed
+                connected_lines = [n for n in valid_lines if n in connected_lines]
+
+            line_order_grouped.append(current_line_lines)
+            for line in current_line_lines:
+                if line in unprinted_lines:
+                    unprinted_lines.remove(line)
+                    valid_lines.remove(line)
+            node_order_grouped.append(current_line_nodes)
+    # print(line_order_grouped)
+    # print("-----next node order grouped-----")
+    # print(node_order_grouped)
+    # print("-----next node order------")
+    # print(node_order)
+    # print("----next line order------")
+    # print(line_order)
+    # print("------------")
     print(line_order_grouped)
-    print("-----next node order grouped-----")
-    print(node_order_grouped)
-    print("-----next node order------")
-    print(node_order)
-    print("----next line order------")
     print(line_order)
-    print("------------")
+    print(node_order)
+    print(node_order_grouped)
     return line_order, node_order, line_order_grouped, node_order_grouped
 
 
