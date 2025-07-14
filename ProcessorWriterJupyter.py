@@ -2,7 +2,7 @@
 import math
 import os
 import pandas as pd
-from shapely.geometry import LineString
+from shapely.geometry import LineString, Point, MultiPoint
 
 pd.options.mode.chained_assignment = None  # default='warn'
 import matplotlib.pyplot as plt
@@ -67,7 +67,6 @@ def distance_calculator(df):
     distances = np.sqrt(dx ** 2 + dy ** 2 + dz ** 2)
     df['distance_from_last'] = distances
     return df
-
 def vector_calculator(line_string):
     x1, y1 = line_string.coords[0]
     x2, y2 = line_string.coords[1]
@@ -95,123 +94,78 @@ def interpolated_z(intersection_point, df):
 
 def validator(unprinted_lines, df):
     """"Checks if the printing of each line affects the printing of future lines and returns those that are able to be printed without affecting the printing of subsequent lines"""
-    valid_lines= []
-    lines_to_remove = []
-    for line_id_test in unprinted_lines: #for each unprinted line compares test line against the other unprinted lines
-        current_line_coords = df[df["line_id"]==line_id_test][["x","y"]]
-        #x and y coordinates of the line that is being checked
 
-        current_line_xyz = df[df["line_id"]==line_id_test][["x","y","z"]]
-        #x,y and z coordinates of the line that is being checked
+    valid_lines = []
+    print(f"checking {len(unprinted_lines)}")
+    for line_id_test in unprinted_lines:
+        print(f"test line{line_id_test}")
+        is_valid = True  # assume valid until proven otherwise
 
+        current_line_coords = df[df["line_id"] == line_id_test][["x", "y"]]
+        current_line_xyz = df[df["line_id"] == line_id_test][["x", "y", "z"]]
         current_line_linestring = LineString(current_line_coords.to_numpy())
-        #converts xy coordinates to a line string making it simple to check if they intersect in z and y
 
+        if len(current_line_coords) < 2:
+            print(f"line skipped too short{line_id_test}")
+            continue  # skip invalid lines
 
         for line_id in unprinted_lines:
-            #loops through every line in unprinted lines to compare our test line to every other line
-
             if line_id == line_id_test:
                 continue
-                #checks if the line ID is the current test line if so can be skipped
 
-            compared_line = df[df["line_id"] == line_id][["x","y"]]
-            compared_line_xyz = df[df["line_id"]==line_id][["x","y","z"]]
-            #for the comparison line our test line is being compared to, create a df of xy and xyz coordinates
+            compared_line_coords = df[df["line_id"] == line_id][["x", "y"]]
+            compared_line_xyz = df[df["line_id"] == line_id][["x", "y", "z"]]
 
-            if len(compared_line) <2:
+            if len(compared_line_coords) < 2:
+                print(f"compared line too short line id {line_id}")
                 continue
-                #if the line is only one point (unlikely) it is skipped
 
-            compared_line_linestring = LineString(compared_line.to_numpy())
-            #comparison line converted to a line string to make it easy to check intersection
+            compared_line_linestring = LineString(compared_line_coords.to_numpy())
 
             if current_line_linestring.intersects(compared_line_linestring):
                 intersection = current_line_linestring.intersection(compared_line_linestring)
-                #if intersections occur, the line id of the comparison line is added to the list
-                #defines the intersection as the location
-
+                print(f"test line{line_id_test}intersects with line {line_id} at {intersection}")
                 if intersection.geom_type == "Point":
-                    #if the lines intersect once
+                    z_current = interpolated_z(intersection, current_line_xyz)
+                    z_compare = interpolated_z(intersection, compared_line_xyz)
+                    print(f"zvalues of current{z_current} and compare{z_compare}")
+                    if np.isclose(z_current, z_compare):
+                        angle = angle_calculator(current_line_linestring, compared_line_linestring)
 
-                    intersection_x = intersection.x
-                    intersection_current_line_z = interpolated_z(intersection, current_line_xyz)
-                    #finds the row on the current test line where the x coordinate = intersection x coordinate and retrieves the z value, as line jumps so small, frequently gives 2 x values and therefore 2 y values so unique is applied
+                        if angle < 30:
+                            try:
+                                current_z_at20 = current_line_xyz.iloc[min(20, len(current_line_xyz)-1)]["z"]
+                                compared_z_at20 = compared_line_xyz.iloc[min(20, len(compared_line_xyz)-1)]["z"]
+                            except IndexError:
+                                continue  # skip if not enough points
 
-                    intersection_compared_line_z = interpolated_z(intersection, compared_line_xyz)
-                    print(intersection_compared_line_z)
-                    print(intersection_current_line_z)
-                    print("test",line_id_test)
-                    print("compare",line_id)
-                    # does the same for the compare line
-                    # if len(intersection_current_line_z) == 0 or len(intersection_compared_line_z) == 0:
-                    #     continue
-
-                    if np.array_equal(intersection_compared_line_z,intersection_current_line_z):
-                        #if z coordinates are equal they interect at a start or endpoint
-                        print("intersects at start/endpoint")
-                        if angle_calculator(current_line_linestring, compared_line_linestring) < 30:
-                            #compares angle between if its less than 30 then checks to see if the next part of the current test line is below
-                            # print("angle is less than 30")
-
-                            current_line_xcoords_at20 = ((list(current_line_linestring.coords)[:21])[-3])[0]
-                            compared_line_xcoords_at20 = ((list(compared_line_linestring.coords)[:21])[-3])[0]
-                            #retrieves the x coordinate of 20th point on line, or if the line is shorter 2 points from the end
-                            #This is to compare if line is below and an arbitrary point down the line was required
-                            current_line_zcoords_at20 = current_line_xyz[current_line_xyz["x"] == current_line_xcoords_at20]["z"].unique()
-                            compared_line_zcoords_at20 = compared_line_xyz[compared_line_xyz["x"] == compared_line_xcoords_at20]["z"].unique()
-                            if len(current_line_zcoords_at20) and len(compared_line_zcoords_at20) and current_line_zcoords_at20[0] < compared_line_zcoords_at20[0]:
-                                # print("current line is valid")
-                                valid_lines.append(line_id_test)
-                                print(f"at angle check under 30{valid_lines}")
-                                lines_to_remove.append(line_id_test)
+                            if current_z_at20 >= compared_z_at20:
+                                is_valid = False
                                 break
-                            else:
-                                print("current line is invalid")
-
                         else:
-                            # print("current line is valid")
-                            valid_lines.append(line_id_test)
-                            print(f"at angle check over 30{valid_lines}")
-                            lines_to_remove.append(line_id_test)
-                            break
+                            continue  # no disqualification
                     else:
-                        # print("intserects at midline")
-                        if (intersection_compared_line_z > intersection_current_line_z).any():
-                            # print("current line is valid")
-                            valid_lines.append(line_id_test)
-                            print(f"at midline intersection{valid_lines}")
-                            lines_to_remove.append(line_id_test)
+                        if z_current <= z_compare:
+                            is_valid = False
                             break
-                        else:
-                            print("current line is invalid")
 
+                elif intersection.geom_type == "MultiPoint":
+                    for pt in intersection.geoms:
+                        z_current = interpolated_z(pt, current_line_xyz)
+                        z_compare = interpolated_z(pt, compared_line_xyz)
+                        if z_current <= z_compare:
+                            is_valid = False
+                            break
+                    if not is_valid:
+                        break
+            # else:
+            #     # If far enough, no conflict
+            #     if current_line_linestring.distance(compared_line_linestring) > 0.5:
+            #         continue
 
-                elif intersection.geom_type == "Multipoint":
-                    #if the lines intersect more than once
-                    print(intersection)
-                    print("intersection_multipoint")
-                    for point in list(intersection.geoms):
-                        intersection_z_current = interpolated_z(point, current_line_xyz)
-                        intersection_z_compare = interpolated_z(point, compared_line_xyz)
-                        if intersection_z_current > intersection_z_compare:
-                            return false
-                    else:
-                        valid_lines.append(line_id_test)
-                        print(f"at multipoint{valid_lines}")
-                        # if intersection_current_line_Z
+        if is_valid:
+            valid_lines.append(line_id_test)
 
-            else:
-                if current_line_linestring.distance(compared_line_linestring) > 0.5:
-                    valid_lines.append(line_id_test)
-                    print(f"at distance no intersection check{valid_lines}")
-                    lines_to_remove.append(line_id_test)
-                    break
-    # for line in lines_to_remove:
-    #     if line in unprinted_lines:
-    #         unprinted_lines.remove(line)
-    print("valid lines")
-    print(valid_lines)
     return valid_lines
 
 def eulerficator(df, terminal_points, nodes):
@@ -252,6 +206,9 @@ def eulerficator(df, terminal_points, nodes):
         #add remove valid lines from unprinted lines
         # Pick the unprinted line with the lowest z-value to start with
 
+        if not valid_lines:
+            print("No valid lines found. Breaking to avoid infinite loop.")
+            break  # <- prevents infinite loop
         while len(valid_lines)>0:
             current_line_lines = []
             current_line_nodes = []
@@ -314,6 +271,7 @@ def eulerficator(df, terminal_points, nodes):
     print(node_order)
     print(node_order_grouped)
     return line_order, node_order, line_order_grouped, node_order_grouped
+
 
 def e_calculator(df):
     alpha = 1
@@ -638,10 +596,10 @@ G1 Z{} F200""".format(5+df['z'].max())
 
 
 # File settings
-filedir = './test_files/'  # Directory of the file you're loading
+filedir = './Rhino/'  # Directory of the file you're loading
 # Name of the output file
-filename ='3Dblood27.11.txt'   # Name of the file you're loading
-fileout = 'file.gcode'
+filename ='Failure_Intersection_Test3.txt'   # Name of the file you're loading
+fileout = 'Failure_Intersection_Test3.gcode'
 
 # Print settings
 d = 0.1  # Target fibril diameter in mm
@@ -655,4 +613,39 @@ E_clean = 10
 settings = build_settings(filedir, filename, fileout, d, x_offset, y_offset, bed_temperature, floor, z_min, roof, f_print,
                    E_clean)
 df, line_order_grouped = shape_prep(settings)
-eulerficator(df=node_finder(df)[0], terminal_points=node_finder(df)[1], nodes=node_finder(df)[2])
+import pandas as pd
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D  # Needed for 3D plotting
+import numpy as np
+
+# Load your DataFrame
+# Replace this with your actual data loading
+# Example format: df = pd.read_csv("your_data.csv")
+# For demo, here's the column structure based on your sample
+
+
+# Set up 3D plot
+fig = plt.figure(figsize=(10, 8))
+ax = fig.add_subplot(111, projection='3d')
+
+# Define markers and colors
+markers = ['o', '^', 's', 'D', '*', 'v', 'x', 'p', '+']
+colors = plt.cm.tab10.colors
+
+# Plot each line_id separately
+for idx, (line_id, group) in enumerate(df.groupby('line_id')):
+    marker = markers[idx % len(markers)]
+    color = colors[idx % len(colors)]
+    ax.plot(group['x'], group['y'], group['z'],
+            label=f'Line {line_id}',
+            marker=marker,
+            color=color)
+
+# Labels and legend
+ax.set_xlabel('X')
+ax.set_ylabel('Y')
+ax.set_zlabel('Z')
+ax.set_title('3D Line Plot Grouped by line_id')
+ax.legend()
+plt.tight_layout()
+plt.show()
