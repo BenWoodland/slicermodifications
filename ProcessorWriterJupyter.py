@@ -84,6 +84,14 @@ def angle_calculator(line_string_1, line_string_2):
     radian_angle = np.arccos(dot_product)
     degree_angle = np.degrees(radian_angle)
     return degree_angle
+def interpolated_z(intersection_point, df):
+
+    df["xy_distance"] = np.sqrt((df['x'] - intersection_point.x)**2 + (df['y'] - intersection_point.y)**2)
+    closest_row = df.loc[df["xy_distance"].idxmin()]
+    z_value = closest_row["z"]
+    return z_value
+
+
 
 def validator(unprinted_lines, df):
     """"Checks if the printing of each line affects the printing of future lines and returns those that are able to be printed without affecting the printing of subsequent lines"""
@@ -127,21 +135,24 @@ def validator(unprinted_lines, df):
                     #if the lines intersect once
 
                     intersection_x = intersection.x
-                    intersection_current_line_z = current_line_xyz[current_line_xyz["x"] == intersection.x]["z"].unique()
+                    intersection_current_line_z = interpolated_z(intersection, current_line_xyz)
                     #finds the row on the current test line where the x coordinate = intersection x coordinate and retrieves the z value, as line jumps so small, frequently gives 2 x values and therefore 2 y values so unique is applied
 
-                    intersection_compared_line_z = compared_line_xyz[compared_line_xyz["x"] == intersection.x]["z"].unique()
+                    intersection_compared_line_z = interpolated_z(intersection, compared_line_xyz)
                     print(intersection_compared_line_z)
+                    print(intersection_current_line_z)
+                    print("test",line_id_test)
+                    print("compare",line_id)
                     # does the same for the compare line
-                    if len(intersection_current_line_z) == 0 or len(intersection_compared_line_z) == 0:
-                        continue
+                    # if len(intersection_current_line_z) == 0 or len(intersection_compared_line_z) == 0:
+                    #     continue
 
                     if np.array_equal(intersection_compared_line_z,intersection_current_line_z):
                         #if z coordinates are equal they interect at a start or endpoint
                         print("intersects at start/endpoint")
                         if angle_calculator(current_line_linestring, compared_line_linestring) < 30:
                             #compares angle between if its less than 30 then checks to see if the next part of the current test line is below
-                            print("angle is less than 30")
+                            # print("angle is less than 30")
 
                             current_line_xcoords_at20 = ((list(current_line_linestring.coords)[:21])[-3])[0]
                             compared_line_xcoords_at20 = ((list(compared_line_linestring.coords)[:21])[-3])[0]
@@ -150,22 +161,26 @@ def validator(unprinted_lines, df):
                             current_line_zcoords_at20 = current_line_xyz[current_line_xyz["x"] == current_line_xcoords_at20]["z"].unique()
                             compared_line_zcoords_at20 = compared_line_xyz[compared_line_xyz["x"] == compared_line_xcoords_at20]["z"].unique()
                             if len(current_line_zcoords_at20) and len(compared_line_zcoords_at20) and current_line_zcoords_at20[0] < compared_line_zcoords_at20[0]:
-                                print("current line is valid")
+                                # print("current line is valid")
                                 valid_lines.append(line_id_test)
+                                print(f"at angle check under 30{valid_lines}")
                                 lines_to_remove.append(line_id_test)
                                 break
                             else:
                                 print("current line is invalid")
+
                         else:
-                            print("current line is valid")
+                            # print("current line is valid")
                             valid_lines.append(line_id_test)
+                            print(f"at angle check over 30{valid_lines}")
                             lines_to_remove.append(line_id_test)
                             break
                     else:
-                        print("intserects at midline")
-                        if intersection_compared_line_z > intersection_current_line_z:
-                            print("current line is valid")
+                        # print("intserects at midline")
+                        if (intersection_compared_line_z > intersection_current_line_z).any():
+                            # print("current line is valid")
                             valid_lines.append(line_id_test)
+                            print(f"at midline intersection{valid_lines}")
                             lines_to_remove.append(line_id_test)
                             break
                         else:
@@ -174,17 +189,29 @@ def validator(unprinted_lines, df):
 
                 elif intersection.geom_type == "Multipoint":
                     #if the lines intersect more than once
+                    print(intersection)
+                    print("intersection_multipoint")
+                    for point in list(intersection.geoms):
+                        intersection_z_current = interpolated_z(point, current_line_xyz)
+                        intersection_z_compare = interpolated_z(point, compared_line_xyz)
+                        if intersection_z_current > intersection_z_compare:
+                            return false
+                    else:
+                        valid_lines.append(line_id_test)
+                        print(f"at multipoint{valid_lines}")
+                        # if intersection_current_line_Z
 
-                    print("multipoint")
             else:
                 if current_line_linestring.distance(compared_line_linestring) > 0.5:
                     valid_lines.append(line_id_test)
+                    print(f"at distance no intersection check{valid_lines}")
                     lines_to_remove.append(line_id_test)
                     break
     # for line in lines_to_remove:
     #     if line in unprinted_lines:
     #         unprinted_lines.remove(line)
-
+    print("valid lines")
+    print(valid_lines)
     return valid_lines
 
 def eulerficator(df, terminal_points, nodes):
@@ -287,7 +314,6 @@ def eulerficator(df, terminal_points, nodes):
     print(node_order)
     print(node_order_grouped)
     return line_order, node_order, line_order_grouped, node_order_grouped
-
 
 def e_calculator(df):
     alpha = 1
