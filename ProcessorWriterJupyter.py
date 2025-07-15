@@ -2,7 +2,7 @@
 import math
 import os
 import pandas as pd
-from shapely.geometry import LineString, Point, MultiPoint
+from shapely.geometry import GeometryCollection,LineString, Point, MultiPoint
 
 pd.options.mode.chained_assignment = None  # default='warn'
 import matplotlib.pyplot as plt
@@ -108,7 +108,19 @@ def angle_calculator(line_string_1, line_string_2, intersection):
 def interpolated_z(intersection_point, df):
 
     df["xy_distance"] = np.sqrt((df['x'] - intersection_point.x)**2 + (df['y'] - intersection_point.y)**2)
+
     closest_row = df.loc[df["xy_distance"].idxmin()]
+    print(closest_row)
+
+    target_index = df["xy_distance"].argmin() # the row you're interested in
+    window = 5  # number of rows before and after
+
+    # Slice around the target
+    start = max(0, target_index - window)
+    end = min(len(df), target_index + window + 1)
+
+    # Show the rows
+    print("this is the data frame around the minimum distance",df.iloc[start:end])
     z_value = closest_row["z"]
     return z_value
 
@@ -147,7 +159,24 @@ def validator(unprinted_lines, df):
 
             if current_line_linestring.intersects(compared_line_linestring):
                 intersection = current_line_linestring.intersection(compared_line_linestring)
+
                 print(f"test line{line_id_test}intersects with line {line_id} at {intersection}")
+                if isinstance(intersection, GeometryCollection):
+                    for geometry in intersection.geoms:
+                        if geometry.geom_type == "LineString":
+                            try:
+                                current_z_atparallel = current_line_xyz.iloc[min(20, len(current_line_xyz)-1)]["z"]
+                                compared_z_atparallel = compared_line_xyz.iloc[min(20, len(compared_line_xyz)-1)]["z"]
+                                print(f"current line z at linestring(parallel intersection){current_z_atparallel} compared z at angle{compared_z_atparallel}")
+                            except IndexError:
+                                print("index error occured")
+                                continue  # skip if not enough points
+
+                            if current_z_atparallel >= compared_z_atparallel:
+                                is_valid = False
+                                print(f"current z above compared z")
+                                break
+
                 if intersection.geom_type == "Point":
                     z_current = interpolated_z(intersection, current_line_xyz)
                     z_compare = interpolated_z(intersection, compared_line_xyz)
@@ -181,7 +210,7 @@ def validator(unprinted_lines, df):
                     for pt in intersection.geoms:
                         z_current = interpolated_z(pt, current_line_xyz)
                         z_compare = interpolated_z(pt, compared_line_xyz)
-                        if z_current > z_compare + 0.01:
+                        if z_current > z_compare + 0.07:
                             is_valid = False
                             break
                     if not is_valid:
