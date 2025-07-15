@@ -31,6 +31,7 @@ def build_settings(filedir, filename, fileout, d, x_offset, y_offset, bed_temper
     }
     return settings
 
+
 def cartesian2d(x1, y1, x2, y2):
     return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
 
@@ -66,19 +67,33 @@ def distance_calculator(df):
     distances = np.sqrt(dx ** 2 + dy ** 2 + dz ** 2)
     df['distance_from_last'] = distances
     return df
-def vector_calculator(line_string):
+def vector_calculator(line_string, intersection):
     line_length =len( line_string.coords)
     print("linelengtht",line_length)
     tenth_of_line = int(line_length/10)
     print("tenth of line",tenth_of_line)
-    x1, y1 = line_string.coords[0]
-    x2, y2 = line_string.coords[tenth_of_line]
+    target_coordinates = intersection
+    coords_list = list(line_string.coords)
+    closest_index = min(
+        range(len(coords_list)),
+        key=lambda i: Point(coords_list[i]).distance(intersection)
+    )
+    start_coord_index=closest_index
+    if start_coord_index + tenth_of_line < line_length:
+        end_coord_index = start_coord_index + tenth_of_line
+    else:
+        end_coord_index = max(0, start_coord_index - tenth_of_line)
+    x1, y1 = line_string.coords[start_coord_index]
+
+
+    x2, y2 = line_string.coords[end_coord_index]
     v = np.array([x2-x1,y2-y1])
+    print("x1", x1, "x2",x2,"y1",y1,"y2",y2)
     print("vector coordinates", v)
     return v
-def angle_calculator(line_string_1, line_string_2):
-    v1 = vector_calculator(line_string_1)
-    v2 = vector_calculator(line_string_2)
+def angle_calculator(line_string_1, line_string_2, intersection):
+    v1 = vector_calculator(line_string_1, intersection)
+    v2 = vector_calculator(line_string_2, intersection)
 
     v1_norm = v1/np.linalg.norm(v1)
     v2_norm = v2/ np.linalg.norm(v2)
@@ -86,7 +101,8 @@ def angle_calculator(line_string_1, line_string_2):
     print("v2 normalised", v2_norm)
     dot_product = np.clip(np.dot(v1_norm, v2_norm), -1.0, 1.0)
     print(dot_product, "dot product")
-    radian_angle = np.arccos(dot_product)
+    cross_product = np.cross(v1_norm, v2_norm)
+    radian_angle = np.arctan2(cross_product,dot_product)
     degree_angle = np.degrees(radian_angle)
     return degree_angle
 def interpolated_z(intersection_point, df):
@@ -137,9 +153,9 @@ def validator(unprinted_lines, df):
                     z_compare = interpolated_z(intersection, compared_line_xyz)
                     print(f"zvalues of current{z_current} and compare{z_compare}")
                     if np.isclose(z_current, z_compare):
-                        angle = angle_calculator(current_line_linestring, compared_line_linestring)
+                        angle = angle_calculator(current_line_linestring, compared_line_linestring, intersection)
                         print(f"angle between lines{angle} test line ={line_id_test} compared line = {line_id}")
-                        if 0.01 < angle < 30:
+                        if (0.01 < angle < 30) or (-0.01> angle> -30):
                             try:
                                 current_z_at20 = current_line_xyz.iloc[min(20, len(current_line_xyz)-1)]["z"]
                                 compared_z_at20 = compared_line_xyz.iloc[min(20, len(compared_line_xyz)-1)]["z"]
@@ -283,7 +299,6 @@ def eulerficator(df, terminal_points, nodes):
     print(node_order)
     print(node_order_grouped)
     return line_order, node_order, line_order_grouped, node_order_grouped
-
 
 def e_calculator(df):
     alpha = 1
