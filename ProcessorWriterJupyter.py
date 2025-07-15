@@ -31,7 +31,6 @@ def build_settings(filedir, filename, fileout, d, x_offset, y_offset, bed_temper
     }
     return settings
 
-
 def cartesian2d(x1, y1, x2, y2):
     return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
 
@@ -68,9 +67,14 @@ def distance_calculator(df):
     df['distance_from_last'] = distances
     return df
 def vector_calculator(line_string):
+    line_length =len( line_string.coords)
+    print("linelengtht",line_length)
+    tenth_of_line = int(line_length/10)
+    print("tenth of line",tenth_of_line)
     x1, y1 = line_string.coords[0]
-    x2, y2 = line_string.coords[1]
+    x2, y2 = line_string.coords[tenth_of_line]
     v = np.array([x2-x1,y2-y1])
+    print("vector coordinates", v)
     return v
 def angle_calculator(line_string_1, line_string_2):
     v1 = vector_calculator(line_string_1)
@@ -78,8 +82,10 @@ def angle_calculator(line_string_1, line_string_2):
 
     v1_norm = v1/np.linalg.norm(v1)
     v2_norm = v2/ np.linalg.norm(v2)
-
+    print("v1 normalised", v1_norm)
+    print("v2 normalised", v2_norm)
     dot_product = np.clip(np.dot(v1_norm, v2_norm), -1.0, 1.0)
+    print(dot_product, "dot product")
     radian_angle = np.arccos(dot_product)
     degree_angle = np.degrees(radian_angle)
     return degree_angle
@@ -110,6 +116,7 @@ def validator(unprinted_lines, df):
             continue  # skip invalid lines
 
         for line_id in unprinted_lines:
+            print(f"compared line {line_id}")
             if line_id == line_id_test:
                 continue
 
@@ -131,29 +138,34 @@ def validator(unprinted_lines, df):
                     print(f"zvalues of current{z_current} and compare{z_compare}")
                     if np.isclose(z_current, z_compare):
                         angle = angle_calculator(current_line_linestring, compared_line_linestring)
-
-                        if angle < 30:
+                        print(f"angle between lines{angle} test line ={line_id_test} compared line = {line_id}")
+                        if 0.01 < angle < 30:
                             try:
                                 current_z_at20 = current_line_xyz.iloc[min(20, len(current_line_xyz)-1)]["z"]
                                 compared_z_at20 = compared_line_xyz.iloc[min(20, len(compared_line_xyz)-1)]["z"]
+                                print(f"current line z at angle{current_z_at20} compared z at angle{compared_z_at20}")
                             except IndexError:
+                                print("index error occured")
                                 continue  # skip if not enough points
 
                             if current_z_at20 >= compared_z_at20:
                                 is_valid = False
+                                print(f"current z above compared z")
                                 break
                         else:
                             continue  # no disqualification
+                            print("not at node")
                     else:
-                        if z_current <= z_compare:
+                        if z_current >= z_compare:
                             is_valid = False
+                            print("z value of current line is above compared line")
                             break
 
                 elif intersection.geom_type == "MultiPoint":
                     for pt in intersection.geoms:
                         z_current = interpolated_z(pt, current_line_xyz)
                         z_compare = interpolated_z(pt, compared_line_xyz)
-                        if z_current <= z_compare:
+                        if z_current > z_compare + 0.01:
                             is_valid = False
                             break
                     if not is_valid:
@@ -165,7 +177,7 @@ def validator(unprinted_lines, df):
 
         if is_valid:
             valid_lines.append(line_id_test)
-
+    print("valid lines", valid_lines)
     return valid_lines
 
 def eulerficator(df, terminal_points, nodes):
