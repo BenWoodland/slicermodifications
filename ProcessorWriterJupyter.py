@@ -152,7 +152,7 @@ def validator(unprinted_lines, df):
                     z_current = interpolated_z(intersection, current_line_xyz)
                     z_compare = interpolated_z(intersection, compared_line_xyz)
                     print(f"zvalues of current{z_current} and compare{z_compare}")
-                    if np.isclose(z_current, z_compare):
+                    if np.isclose(z_current, z_compare, rtol=2e-02, atol=1e-08):
                         angle = angle_calculator(current_line_linestring, compared_line_linestring, intersection)
                         print(f"angle between lines{angle} test line ={line_id_test} compared line = {line_id}")
                         if (0.01 < angle < 30) or (-0.01> angle> -30):
