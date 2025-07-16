@@ -67,6 +67,8 @@ def distance_calculator(df):
     distances = np.sqrt(dx ** 2 + dy ** 2 + dz ** 2)
     df['distance_from_last'] = distances
     return df
+
+
 def vector_calculator(line_string, intersection):
     line_length =len( line_string.coords)
     print("linelengtht",line_length)
@@ -125,6 +127,25 @@ def interpolated_z(intersection_point, df):
     return z_value
 
 
+def z_tenth_from_intersection_calculator(intersection, df, line_string):
+    line_length = len(line_string.coords)
+
+    tenth_of_line = int(line_length / 10)
+
+    target_coordinates = intersection
+    coords_list = list(line_string.coords)
+    closest_index = min(
+        range(len(coords_list)),
+        key=lambda i: Point(coords_list[i]).distance(intersection)
+    )
+    start_coord_index = closest_index
+    if start_coord_index + tenth_of_line < line_length:
+        end_coord_index = start_coord_index + tenth_of_line
+    else:
+        end_coord_index = max(0, start_coord_index - tenth_of_line)
+    z_point = line_string.coords[end_coord_index]
+    z_value = interpolated_z(z_point, df)
+    return z_value
 
 def validator(unprinted_lines, df):
     """"Checks if the printing of each line affects the printing of future lines and returns those that are able to be printed without affecting the printing of subsequent lines"""
@@ -186,8 +207,8 @@ def validator(unprinted_lines, df):
                         print(f"angle between lines{angle} test line ={line_id_test} compared line = {line_id}")
                         if (0.01 < angle < 30) or (-0.01> angle> -30):
                             try:
-                                current_z_at20 = current_line_xyz.iloc[min(20, len(current_line_xyz)-1)]["z"]
-                                compared_z_at20 = compared_line_xyz.iloc[min(20, len(compared_line_xyz)-1)]["z"]
+                                current_z_at20 = z_tenth_from_intersection_calculator(intersection, df, current_line_xyz)
+                                compared_z_at20 = z_tenth_from_intersection_calculator(intersection, df, compared_line_xyz)
                                 print(f"current line z at angle{current_z_at20} compared z at angle{compared_z_at20}")
                             except IndexError:
                                 print("index error occured")
