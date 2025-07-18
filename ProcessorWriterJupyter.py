@@ -3,6 +3,9 @@ import math
 import os
 import pandas as pd
 from shapely.geometry import GeometryCollection,LineString, Point, MultiPoint
+import collections
+from typing import Dict, List, Tuple, Any, Set
+
 
 pd.options.mode.chained_assignment = None  # default='warn'
 import matplotlib.pyplot as plt
@@ -67,6 +70,78 @@ def distance_calculator(df):
     distances = np.sqrt(dx ** 2 + dy ** 2 + dz ** 2)
     df['distance_from_last'] = distances
     return df
+
+
+class EulerianTraversal:
+    """
+    Compute one or multiple Eulerian trails for an undirected graph.
+    Nodes can be any hashable; edges represented as frozensets.
+    """
+    def __init__(self, graph: Dict[Any, List[Any]]):
+        self.graph = {u: collections.deque(graph.get(u, [])) for u in graph}
+        self.edge_counts = collections.Counter(
+            frozenset((u, v))
+            for u, nbrs in graph.items()
+            for v in nbrs
+        )
+
+    def _remove_edge(self, u: Any, v: Any) -> None:
+        self.graph[u].remove(v)
+        self.graph[v].remove(u)
+        key = frozenset((u, v))
+        self.edge_counts[key] -= 1
+        if self.edge_counts[key] == 0:
+            del self.edge_counts[key]
+
+    def _add_edge(self, u: Any, v: Any) -> None:
+        self.graph[u].append(v)
+        self.graph[v].append(u)
+        key = frozenset((u, v))
+        self.edge_counts[key] += 1
+
+    def _dfs_count(self, u: Any, visited: Set[Any]) -> int:
+        visited.add(u)
+        for w in self.graph[u]:
+            if w not in visited:
+                self._dfs_count(w, visited)
+        return len(visited)
+
+    def _is_valid_edge(self, u: Any, v: Any) -> bool:
+        if len(self.graph[u]) == 1:
+            return True
+        c1 = self._dfs_count(u, set())
+        self._remove_edge(u, v)
+        c2 = self._dfs_count(u, set())
+        self._add_edge(u, v)
+        return c1 == c2
+
+    def _fleury(self, start: Any) -> Tuple[List[Any], List[Tuple[Any, Any]]]:
+        node_path, edge_path = [], []
+        def visit(u: Any):
+            while self.graph[u]:
+                v = next(v for v in list(self.graph[u]) if self._is_valid_edge(u, v))
+                self._remove_edge(u, v)
+                edge_path.append((u, v))
+                visit(v)
+            node_path.append(u)
+        visit(start)
+        return node_path[::-1], edge_path
+
+    def traverse_all(self) -> Dict[str, Any]:
+        results = []
+        while any(self.edge_counts.values()):
+            start = next(u for edge in list(self.edge_counts) for u in edge if self.edge_counts[edge] > 0)
+            nodes, edges = self._fleury(start)
+            results.append({'nodes': nodes, 'edges': edges})
+        flat_nodes = [n for t in results for n in t['nodes']]
+        flat_edges = [e for t in results for e in t['edges']]
+        return {
+            'trails': results,
+            'node_order': flat_nodes,
+            'edge_order': flat_edges,
+            'grouped_nodes': [t['nodes'] for t in results],
+            'grouped_edges': [t['edges'] for t in results]
+        }
 
 
 def vector_calculator(line_string, intersection):
@@ -247,108 +322,38 @@ def validator(unprinted_lines, df):
     return valid_lines
 
 def eulerficator(df, terminal_points, nodes):
-    terminal_points_nogroups = terminal_points.reset_index()
-    clusters = terminal_points_nogroups['cluster'].unique()
-    lines = terminal_points_nogroups['line_id'].unique()
-    # print(terminal_points)
-    # print("----------")
-    # print(terminal_points_nogroups)
-    # print(nodes)
-    # print(df)
-    # Run through each cluster and create two dictionaries
-    # 1 - cluster numbers as key and the connecting lines as values
-    # 2 - cluster numbers as key and the number of connecting nodes as values
-    cluster_dict = {}
-    connectivity_dict = {}
-    for c in clusters:
-        connecting_lines = terminal_points_nogroups[terminal_points_nogroups['cluster'] == c]
-        cluster_dict[c] = list(connecting_lines['line_id'].values)
+    """
+    Build graph: nodes = clusters, edges = line_ids connecting two clusters.
+    Then compute Eulerian trails.
+    Returns line_order, node_order, line_order_grouped, node_order_grouped.
+    """
+    # Map each line to its two cluster endpoints
+    endpoints = {}
+    for line_id, grp in terminal_points.groupby('line_id'):
+        endpoints[line_id] = list(grp['cluster'].unique())
+    # Build adjacency: cluster -> neighboring clusters
+    graph = collections.defaultdict(list)
+    for line_id, (u, v) in endpoints.items():
+        graph[u].append(v)
+        graph[v].append(u)
 
-        connectivity_dict[c] = len(connecting_lines)
+    # Traverse
+    et = EulerianTraversal(graph)
+    res = et.traverse_all()
 
-    line_order = []
-    line_order_grouped = []
-    node_order = []
-    node_order_grouped = []
-    while len(line_order) < len(lines):
+    # Translate edge sequence (u,v) to line_ids
+    edge_to_line = {frozenset(endpoints[lid]): lid for lid in endpoints}
+    flat_edges = [edge_to_line[frozenset(e)] for e in res['edge_order']]
+    grouped_edges = [[edge_to_line[frozenset(e)] for e in group] for group in res['grouped_edges']]
 
+    # Node orders: use cluster ids or map back to actual node indices
+    flat_nodes = res['node_order']
+    grouped_nodes = res['grouped_nodes']
 
-        # Sort lines by height order - bottom up
-        min_z = df.groupby('line_id')['z'].min()
-        heightsorted_line_ids = min_z.sort_values().index.tolist()
-        unprinted_lines = [n for n in heightsorted_line_ids if n not in line_order]
-        # print(df)
-        ### where the validator goes###
+    return flat_edges, flat_nodes, grouped_edges, grouped_nodes
 
-        valid_lines = validator(unprinted_lines, df)
-        #add remove valid lines from unprinted lines
-        # Pick the unprinted line with the lowest z-value to start with
-
-        if not valid_lines:
-            print("No valid lines found. Breaking to avoid infinite loop.")
-            break  # <- prevents infinite loop
-        while len(valid_lines)>0:
-            current_line_lines = []
-            current_line_nodes = []
-            next_line = valid_lines[0]
-
-            line_order.append(next_line)
-            current_line_lines.append(next_line)
-            valid_lines = valid_lines[1:]  # Remove the printed line from the list of remaining lines
-            unprinted_lines.remove(next_line)
-            # Calculate which node you're at - it's the other node to which next_line is connected
-            connected_nodes = terminal_points.loc[next_line]['cluster'].values
-
-            # Start at node with lower z-value - record as first node of this line
-            start_node = nodes.loc[connected_nodes]['z'].idxmin()
-            current_line_nodes.append(start_node)
-            node_order.append(start_node)
-
-            # Find node at other end of line
-            end_node = connected_nodes[connected_nodes != start_node][0]
-            current_line_nodes.append(end_node)
-            node_order.append(end_node)
-
-            connected_lines = cluster_dict[end_node]  # Lines connected to end node
-            connected_lines = [n for n in valid_lines if
-                               n in connected_lines]  # List unprinted connected lines in height-order
-            while len(connected_lines) > 0:
-                # Pick next line based on lowest z_min
-                next_line = connected_lines[0]
-                line_order.append(next_line)
-                current_line_lines.append(next_line)
-                valid_lines.remove(next_line)
-                unprinted_lines.remove(next_line)
-                # Calculate which node you've moved to
-                connected_nodes = terminal_points.loc[next_line]['cluster'].values
-                start_node = end_node
-                end_node = connected_nodes[connected_nodes != start_node][0]
-                current_line_nodes.append(end_node)
-
-                connected_lines = cluster_dict[end_node]
-
-                # Remove lines that have already been printed
-                connected_lines = [n for n in valid_lines if n in connected_lines]
-
-            line_order_grouped.append(current_line_lines)
-            for line in current_line_lines:
-                if line in unprinted_lines:
-                    unprinted_lines.remove(line)
-                    valid_lines.remove(line)
-            node_order_grouped.append(current_line_nodes)
-    # print(line_order_grouped)
-    # print("-----next node order grouped-----")
-    # print(node_order_grouped)
-    # print("-----next node order------")
-    # print(node_order)
-    # print("----next line order------")
-    # print(line_order)
-    # print("------------")
-    print(line_order_grouped)
-    print(line_order)
-    print(node_order)
-    print(node_order_grouped)
-    return line_order, node_order, line_order_grouped, node_order_grouped
+# Example wiring:
+# line_order, node_order, line_order_grouped, node_order_grouped = eulerficator(df, terminal_points, nodes)
 
 def e_calculator(df):
     alpha = 1
