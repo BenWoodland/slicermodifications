@@ -122,7 +122,7 @@ def interpolated_z(intersection_point, df):
     end = min(len(df), target_index + window + 1)
 
     # Show the rows
-    print("this is the data frame around the minimum distance",df.iloc[start:end])
+    # print("this is the data frame around the minimum distance",df.iloc[start:end])
     z_value = closest_row["z"]
     return z_value
 
@@ -230,7 +230,9 @@ def validator(unprinted_lines, df):
                 elif intersection.geom_type == "MultiPoint":
                     for pt in intersection.geoms:
                         z_current = interpolated_z(pt, current_line_xyz)
+                        print(z_current,"z_current")
                         z_compare = interpolated_z(pt, compared_line_xyz)
+                        print(z_compare, "z_compare")
                         if z_current > z_compare + 0.07:
                             is_valid = False
                             break
@@ -245,6 +247,95 @@ def validator(unprinted_lines, df):
             valid_lines.append(line_id_test)
     print("valid lines", valid_lines)
     return valid_lines
+def node_connectivity_finder(dictionary):
+    new_dictionary = {}
+
+    for key1, values1 in dictionary.items():
+        shared_keys = []
+
+        for key2, values2 in dictionary.items():
+            if key1 == key2:
+                continue
+
+            # Count how many values from values1 are also in values2
+            shared_count = sum(1 for v in values1 if v in values2)
+
+            # Repeat key2 shared_count times
+            shared_keys.extend([key2] * shared_count)
+
+        new_dictionary[key1] = shared_keys
+
+
+    return new_dictionary
+def dfsCount(v, adj, visited): ### unmodified
+    visited[v] = True
+
+    for neighbor in adj[v]:
+        if not visited[neighbor]:
+            dfsCount(neighbor, adj, visited)
+            
+def bridge_check(next_node, start_node, valid_node_link_dict,node_number):
+    if len(valid_node_link_dict[start_node]) == 1:
+        return True
+
+    visited = [False] * node_number
+    count1 = 0
+    depth_first_search(start_node, valid_node_link_dict, visited)
+    count1 = sum(visited)
+
+    remove_node(valid_node_link_dict, start_node, next_node)
+
+    visited = [False] * node_number
+    count2 = 0
+    depth_first_search(start_node, valid_node_link_dict, visited)
+    count2 = sum(visited)
+
+    valid_node_link_dict[start_node].append(next_node)
+    valid_node_link_dict[next_node].append(star_node)
+
+    return count1 == count2
+def recursive_eulerian(node_path, edges, start_node, valid_node_link_dict, node_number):
+    for node in valid_node_link_dict[start_node]:
+        next_node= node
+        if bridge_check(next_node, start_node, valid_node_link_dict,node_number):
+            edges.append(line)
+            node_path.append(next_node)
+            remove_node(valid_node_link_dict, start_node, next_node)
+            remove_line()
+            #repeat with start node as the next node
+            recursive_eulerian(node_path, edges, next_node, valid_node_link_dict, node_number)
+            break
+
+def fleurys_algorithm(clusters, cluster_dictionary, connectivity_dictionary, valid_lines):
+    valid_line_cluster_dict= {}
+
+    for cluster, lines in cluster_dictionary.items():
+        valid_line_cluster_dict[cluster] = [item for item in lines if item in valid_lines]
+
+    valid_node_link_dict = node_connectivity_finder(valid_line_cluster_dict)
+    print(valid_node_link_dict)
+    node_number = len(valid_node_link_dict)
+
+    filtered = {k: v for k, v in valid_node_link_dict.items() if v not in ('', None,[])}
+
+    if filtered:
+        min_key = min(filtered, key=filtered.get)
+        print(min_key)  # Output: 'e'
+    else:
+        print("No valid entries")
+    start_node = min_key
+    node_path = []
+    edges = []
+    node_path.append(start_node)
+    recursive_eulerian(node_path, edges, start_node, valid_node_link_dict, node_number)
+    print(edges, "edges")
+    print(node_path, "node path")
+
+
+
+
+
+
 
 def eulerficator(df, terminal_points, nodes):
     terminal_points_nogroups = terminal_points.reset_index()
@@ -260,11 +351,24 @@ def eulerficator(df, terminal_points, nodes):
     # 2 - cluster numbers as key and the number of connecting nodes as values
     cluster_dict = {}
     connectivity_dict = {}
+
     for c in clusters:
         connecting_lines = terminal_points_nogroups[terminal_points_nogroups['cluster'] == c]
         cluster_dict[c] = list(connecting_lines['line_id'].values)
 
         connectivity_dict[c] = len(connecting_lines)
+    print("cluster_dict")
+    print(cluster_dict)
+    print("connectivity_dict")
+    print(connectivity_dict)
+    print("terminal_points_nogroups")
+    print(terminal_points_nogroups)
+    print("terminal_points")
+    print(terminal_points)
+    print("clusters")
+    print(clusters)
+    print("lines")
+    print(lines)
 
     line_order = []
     line_order_grouped = []
@@ -281,6 +385,7 @@ def eulerficator(df, terminal_points, nodes):
         ### where the validator goes###
 
         valid_lines = validator(unprinted_lines, df)
+        fleurys_algorithm(clusters, cluster_dict, connectivity_dict, valid_lines)
         #add remove valid lines from unprinted lines
         # Pick the unprinted line with the lowest z-value to start with
 
@@ -349,6 +454,7 @@ def eulerficator(df, terminal_points, nodes):
     print(node_order)
     print(node_order_grouped)
     return line_order, node_order, line_order_grouped, node_order_grouped
+
 
 def e_calculator(df):
     alpha = 1
@@ -551,7 +657,6 @@ def shapesplitter(df):
             shape = pd.concat([shape1, shape2])
             df = pd.concat([df, shape])
     return df
-
 import numpy as np
 
 
