@@ -71,9 +71,9 @@ def distance_calculator(df):
 
 def vector_calculator(line_string, intersection):
     line_length =len( line_string.coords)
-    print("linelengtht",line_length)
+    # print("linelengtht",line_length)
     tenth_of_line = int(line_length/10)
-    print("tenth of line",tenth_of_line)
+    # print("tenth of line",tenth_of_line)
     target_coordinates = intersection
     coords_list = list(line_string.coords)
     closest_index = min(
@@ -90,8 +90,8 @@ def vector_calculator(line_string, intersection):
 
     x2, y2 = line_string.coords[end_coord_index]
     v = np.array([x2-x1,y2-y1])
-    print("x1", x1, "x2",x2,"y1",y1,"y2",y2)
-    print("vector coordinates", v)
+    # print("x1", x1, "x2",x2,"y1",y1,"y2",y2)
+    # print("vector coordinates", v)
     return v
 def angle_calculator(line_string_1, line_string_2, intersection):
     v1 = vector_calculator(line_string_1, intersection)
@@ -99,10 +99,10 @@ def angle_calculator(line_string_1, line_string_2, intersection):
 
     v1_norm = v1/np.linalg.norm(v1)
     v2_norm = v2/ np.linalg.norm(v2)
-    print("v1 normalised", v1_norm)
-    print("v2 normalised", v2_norm)
+    # print("v1 normalised", v1_norm)
+    # print("v2 normalised", v2_norm)
     dot_product = np.clip(np.dot(v1_norm, v2_norm), -1.0, 1.0)
-    print(dot_product, "dot product")
+    # print(dot_product, "dot product")
     cross_product = np.cross(v1_norm, v2_norm)
     radian_angle = np.arctan2(cross_product,dot_product)
     degree_angle = np.degrees(radian_angle)
@@ -112,7 +112,7 @@ def interpolated_z(intersection_point, df):
     df["xy_distance"] = np.sqrt((df['x'] - intersection_point.x)**2 + (df['y'] - intersection_point.y)**2)
 
     closest_row = df.loc[df["xy_distance"].idxmin()]
-    print(closest_row)
+    # print(closest_row)
 
     target_index = df["xy_distance"].argmin() # the row you're interested in
     window = 5  # number of rows before and after
@@ -151,9 +151,9 @@ def validator(unprinted_lines, df):
     """"Checks if the printing of each line affects the printing of future lines and returns those that are able to be printed without affecting the printing of subsequent lines"""
 
     valid_lines = []
-    print(f"checking {len(unprinted_lines)}")
+    # print(f"checking {len(unprinted_lines)}")
     for line_id_test in unprinted_lines:
-        print(f"test line{line_id_test}")
+        # print(f"test line{line_id_test}")
         is_valid = True  # assume valid until proven otherwise
 
         current_line_coords = df[df["line_id"] == line_id_test][["x", "y"]]
@@ -165,7 +165,7 @@ def validator(unprinted_lines, df):
             continue  # skip invalid lines
 
         for line_id in unprinted_lines:
-            print(f"compared line {line_id}")
+            # print(f"compared line {line_id}")
             if line_id == line_id_test:
                 continue
 
@@ -181,58 +181,58 @@ def validator(unprinted_lines, df):
             if current_line_linestring.intersects(compared_line_linestring):
                 intersection = current_line_linestring.intersection(compared_line_linestring)
 
-                print(f"test line{line_id_test}intersects with line {line_id} at {intersection}")
+                # print(f"test line{line_id_test}intersects with line {line_id} at {intersection}")
                 if isinstance(intersection, GeometryCollection):
                     for geometry in intersection.geoms:
                         if geometry.geom_type == "LineString":
                             try:
                                 current_z_atparallel = current_line_xyz.iloc[min(20, len(current_line_xyz)-1)]["z"]
                                 compared_z_atparallel = compared_line_xyz.iloc[min(20, len(compared_line_xyz)-1)]["z"]
-                                print(f"current line z at linestring(parallel intersection){current_z_atparallel} compared z at angle{compared_z_atparallel}")
+                                # print(f"current line z at linestring(parallel intersection){current_z_atparallel} compared z at angle{compared_z_atparallel}")
                             except IndexError:
                                 print("index error occured")
                                 continue  # skip if not enough points
 
                             if current_z_atparallel >= compared_z_atparallel:
                                 is_valid = False
-                                print(f"current z above compared z")
+                                # print(f"current z above compared z")
                                 break
 
                 if intersection.geom_type == "Point":
                     z_current = interpolated_z(intersection, current_line_xyz)
                     z_compare = interpolated_z(intersection, compared_line_xyz)
-                    print(f"zvalues of current{z_current} and compare{z_compare}")
+                    # print(f"zvalues of current{z_current} and compare{z_compare}")
                     if np.isclose(z_current, z_compare, rtol=2e-02, atol=1e-08):
                         angle = angle_calculator(current_line_linestring, compared_line_linestring, intersection)
-                        print(f"angle between lines{angle} test line ={line_id_test} compared line = {line_id}")
+                        # print(f"angle between lines{angle} test line ={line_id_test} compared line = {line_id}")
                         if (0.01 < angle < 30) or (-0.01> angle> -30):
                             try:
                                 current_z_at20 = z_tenth_from_intersection_calculator(intersection, df, current_line_xyz)
                                 compared_z_at20 = z_tenth_from_intersection_calculator(intersection, df, compared_line_xyz)
-                                print(f"current line z at angle{current_z_at20} compared z at angle{compared_z_at20}")
+                                # print(f"current line z at angle{current_z_at20} compared z at angle{compared_z_at20}")
                             except IndexError:
                                 print("index error occured")
                                 continue  # skip if not enough points
 
                             if current_z_at20 >= compared_z_at20:
                                 is_valid = False
-                                print(f"current z above compared z")
+                                # print(f"current z above compared z")
                                 break
                         else:
                             continue  # no disqualification
-                            print("not at node")
+                            # print("not at node")
                     else:
                         if z_current >= z_compare:
                             is_valid = False
-                            print("z value of current line is above compared line")
+                            # print("z value of current line is above compared line")
                             break
 
                 elif intersection.geom_type == "MultiPoint":
                     for pt in intersection.geoms:
                         z_current = interpolated_z(pt, current_line_xyz)
-                        print(z_current,"z_current")
+                        # print(z_current,"z_current")
                         z_compare = interpolated_z(pt, compared_line_xyz)
-                        print(z_compare, "z_compare")
+                        # print(z_compare, "z_compare")
                         if z_current > z_compare + 0.07:
                             is_valid = False
                             break
@@ -306,7 +306,7 @@ def bridge_check(next_node, start_node, valid_node_link_dict,node_number):
 
     valid_node_link_dict[start_node].append(next_node)
     valid_node_link_dict[next_node].append(start_node)
-
+    print("count 1", count1, "count2", count2)
     return count1 == count2
 def recursive_eulerian(node_path, edges, start_node, valid_node_link_dict, node_number, valid_line_cluster_dict):
     for node in valid_node_link_dict[start_node]:
@@ -314,14 +314,24 @@ def recursive_eulerian(node_path, edges, start_node, valid_node_link_dict, node_
         if bridge_check(next_node, start_node, valid_node_link_dict,node_number):
             line = line_from_nodes(start_node, next_node, valid_line_cluster_dict)
             edges.append(line)
+            print("appending line", line)
             node_path.append(next_node)
             remove_node(valid_node_link_dict, start_node, next_node)
             remove_line(valid_line_cluster_dict, start_node, next_node, line)
             #repeat with start node as the next node
             recursive_eulerian(node_path, edges, next_node, valid_node_link_dict, node_number, valid_line_cluster_dict)
             break
+        else:
+            line = line_from_nodes(start_node, next_node, valid_line_cluster_dict)
+            edges.append(line)
+            print("appending line", line)
+            node_path.append(next_node)
+            remove_node(valid_node_link_dict, start_node, next_node)
+            remove_line(valid_line_cluster_dict, start_node, next_node, line)
+            # repeat with start node as the next node
+            recursive_eulerian(node_path, edges, next_node, valid_node_link_dict, node_number, valid_line_cluster_dict)
 
-def fleurys_algorithm(clusters, cluster_dictionary, connectivity_dictionary, valid_lines):
+def fleurys_algorithm(clusters, cluster_dictionary, connectivity_dictionary, valid_lines, edges_grouped, node_path_grouped):
     valid_line_cluster_dict= {}
 
     for cluster, lines in cluster_dictionary.items():
@@ -329,23 +339,31 @@ def fleurys_algorithm(clusters, cluster_dictionary, connectivity_dictionary, val
 
     valid_node_link_dict = node_connectivity_finder(valid_line_cluster_dict)
     print(valid_node_link_dict)
-    node_number = len(valid_node_link_dict)
 
-    filtered = {k: v for k, v in valid_node_link_dict.items() if v not in ('', None,[])}
+    while valid_line_cluster_dict:
+        node_number = len(valid_node_link_dict)
 
-    if filtered:
-        min_key = min(filtered, key=filtered.get)
-        print(min_key)  # Output: 'e'
-    else:
-        print("No valid entries")
-    start_node = min_key
-    node_path = []
-    edges = []
-    node_path.append(start_node)
-    recursive_eulerian(node_path, edges, start_node, valid_node_link_dict, node_number, valid_line_cluster_dict)
-    print(edges, "edges")
-    print(node_path, "node path")
+        filtered = {k: v for k, v in valid_node_link_dict.items() if v not in ('', None,[])}
 
+        if filtered:
+            min_key = min(filtered, key=filtered.get)
+            print(min_key, "minimum key")  # Output: 'e'
+        else:
+            print("No valid entries")
+            break
+        start_node = min_key
+        print(start_node, "start node")
+        node_path = []
+        edges = []
+        node_path.append(start_node)
+        recursive_eulerian(node_path, edges, start_node, valid_node_link_dict, node_number, valid_line_cluster_dict)
+        print(edges, "edges")
+        print(node_path, "node path")
+        edges_grouped.append(edges)
+        node_path_grouped.append(node_path)
+
+    print(edges_grouped)
+    print(node_path_grouped)
 
 
 
@@ -389,6 +407,8 @@ def eulerficator(df, terminal_points, nodes):
     line_order_grouped = []
     node_order = []
     node_order_grouped = []
+    edges_grouped = []
+    node_path_grouped = []
     while len(line_order) < len(lines):
 
 
@@ -400,7 +420,9 @@ def eulerficator(df, terminal_points, nodes):
         ### where the validator goes###
 
         valid_lines = validator(unprinted_lines, df)
-        fleurys_algorithm(clusters, cluster_dict, connectivity_dict, valid_lines)
+
+        fleurys_algorithm(clusters, cluster_dict, connectivity_dict, valid_lines, edges_grouped, node_path_grouped)
+
         #add remove valid lines from unprinted lines
         # Pick the unprinted line with the lowest z-value to start with
 
@@ -464,10 +486,14 @@ def eulerficator(df, terminal_points, nodes):
     # print("----next line order------")
     # print(line_order)
     # print("------------")
-    print(line_order_grouped)
-    print(line_order)
-    print(node_order)
-    print(node_order_grouped)
+    print(line_order_grouped,"line_order grouped")
+    print(line_order, "line order")
+    print(node_order, "node order")
+    print(node_order_grouped, "node order grouped")
+    node_path_ungrouped = [item for sublist in node_path_grouped for item in sublist]
+    print(node_path_ungrouped,"node path ungrouped")
+    edges_ungrouped = [item for sublist in edges_grouped for item in sublist]
+    print(edges_ungrouped, "edges ungrouped")
     return line_order, node_order, line_order_grouped, node_order_grouped
 
 
