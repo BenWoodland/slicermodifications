@@ -267,43 +267,58 @@ def node_connectivity_finder(dictionary):
 
 
     return new_dictionary
-def dfsCount(v, adj, visited): ### unmodified
-    visited[v] = True
+def line_from_nodes(start_node, end_node,valid_line_cluster_dict):
+    end_node_list= valid_line_cluster_dict[end_node]
+    start_node_list = valid_line_cluster_dict[start_node]
+    shared_lines = [item for item in start_node_list if item in end_node_list]
+    return shared_lines[0]
 
-    for neighbor in adj[v]:
+def remove_line(valid_line_cluster_dict, start_node, next_node, line):
+    valid_line_cluster_dict[start_node].remove(line)
+    valid_line_cluster_dict[next_node].remove(line)
+
+def remove_node(valid_node_link_dict, u, v):
+    valid_node_link_dict[u].remove(v)
+    valid_node_link_dict[v].remove(u)
+
+def depth_first_search(next_node, valid_node_link_dict, visited):
+    visited[next_node] = True
+
+    for neighbor in valid_node_link_dict[next_node]:
         if not visited[neighbor]:
-            dfsCount(neighbor, adj, visited)
-            
+            depth_first_search(neighbor, valid_node_link_dict, visited)
+
 def bridge_check(next_node, start_node, valid_node_link_dict,node_number):
     if len(valid_node_link_dict[start_node]) == 1:
         return True
 
-    visited = [False] * node_number
+    visited = {key:False for key in valid_node_link_dict }
     count1 = 0
-    depth_first_search(start_node, valid_node_link_dict, visited)
-    count1 = sum(visited)
+    depth_first_search(next_node, valid_node_link_dict, visited)
+    count1 = sum(1 for value in visited.values() if value is True)
 
     remove_node(valid_node_link_dict, start_node, next_node)
 
-    visited = [False] * node_number
+    visited = {key:False for key in valid_node_link_dict }
     count2 = 0
     depth_first_search(start_node, valid_node_link_dict, visited)
-    count2 = sum(visited)
+    count2 = sum(1 for value in visited.values() if value is True)
 
     valid_node_link_dict[start_node].append(next_node)
-    valid_node_link_dict[next_node].append(star_node)
+    valid_node_link_dict[next_node].append(start_node)
 
     return count1 == count2
-def recursive_eulerian(node_path, edges, start_node, valid_node_link_dict, node_number):
+def recursive_eulerian(node_path, edges, start_node, valid_node_link_dict, node_number, valid_line_cluster_dict):
     for node in valid_node_link_dict[start_node]:
         next_node= node
         if bridge_check(next_node, start_node, valid_node_link_dict,node_number):
+            line = line_from_nodes(start_node, next_node, valid_line_cluster_dict)
             edges.append(line)
             node_path.append(next_node)
             remove_node(valid_node_link_dict, start_node, next_node)
-            remove_line()
+            remove_line(valid_line_cluster_dict, start_node, next_node, line)
             #repeat with start node as the next node
-            recursive_eulerian(node_path, edges, next_node, valid_node_link_dict, node_number)
+            recursive_eulerian(node_path, edges, next_node, valid_node_link_dict, node_number, valid_line_cluster_dict)
             break
 
 def fleurys_algorithm(clusters, cluster_dictionary, connectivity_dictionary, valid_lines):
@@ -327,7 +342,7 @@ def fleurys_algorithm(clusters, cluster_dictionary, connectivity_dictionary, val
     node_path = []
     edges = []
     node_path.append(start_node)
-    recursive_eulerian(node_path, edges, start_node, valid_node_link_dict, node_number)
+    recursive_eulerian(node_path, edges, start_node, valid_node_link_dict, node_number, valid_line_cluster_dict)
     print(edges, "edges")
     print(node_path, "node path")
 
