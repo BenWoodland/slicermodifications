@@ -403,97 +403,42 @@ def eulerficator(df, terminal_points, nodes):
     print("lines")
     print(lines)
 
-    line_order = []
-    line_order_grouped = []
-    node_order = []
-    node_order_grouped = []
+
+
+
     edges_grouped = []
+
     node_path_grouped = []
-    while len(line_order) < len(lines):
+    while sum(len(sublist) for sublist in edges_grouped) < len(lines):
 
 
         # Sort lines by height order - bottom up
         min_z = df.groupby('line_id')['z'].min()
         heightsorted_line_ids = min_z.sort_values().index.tolist()
-        unprinted_lines = [n for n in heightsorted_line_ids if n not in line_order]
+        edges_ungrouped = flattened_edges = [item for sublist in edges_grouped for item in sublist]
+        unprinted_lines = [n for n in heightsorted_line_ids if n not in edges_ungrouped]
         # print(df)
         ### where the validator goes###
 
         valid_lines = validator(unprinted_lines, df)
-
-        fleurys_algorithm(clusters, cluster_dict, connectivity_dict, valid_lines, edges_grouped, node_path_grouped)
-
-        #add remove valid lines from unprinted lines
-        # Pick the unprinted line with the lowest z-value to start with
-
         if not valid_lines:
             print("No valid lines found. Breaking to avoid infinite loop.")
             break  # <- prevents infinite loop
-        while len(valid_lines)>0:
-            current_line_lines = []
-            current_line_nodes = []
-            next_line = valid_lines[0]
 
-            line_order.append(next_line)
-            current_line_lines.append(next_line)
+        fleurys_algorithm(clusters, cluster_dict, connectivity_dict, valid_lines, edges_grouped, node_path_grouped)
+
+        while len(valid_lines)>0:
+            next_line = valid_lines[0]
             valid_lines = valid_lines[1:]  # Remove the printed line from the list of remaining lines
             unprinted_lines.remove(next_line)
-            # Calculate which node you're at - it's the other node to which next_line is connected
-            connected_nodes = terminal_points.loc[next_line]['cluster'].values
 
-            # Start at node with lower z-value - record as first node of this line
-            start_node = nodes.loc[connected_nodes]['z'].idxmin()
-            current_line_nodes.append(start_node)
-            node_order.append(start_node)
 
-            # Find node at other end of line
-            end_node = connected_nodes[connected_nodes != start_node][0]
-            current_line_nodes.append(end_node)
-            node_order.append(end_node)
-
-            connected_lines = cluster_dict[end_node]  # Lines connected to end node
-            connected_lines = [n for n in valid_lines if
-                               n in connected_lines]  # List unprinted connected lines in height-order
-            while len(connected_lines) > 0:
-                # Pick next line based on lowest z_min
-                next_line = connected_lines[0]
-                line_order.append(next_line)
-                current_line_lines.append(next_line)
-                valid_lines.remove(next_line)
-                unprinted_lines.remove(next_line)
-                # Calculate which node you've moved to
-                connected_nodes = terminal_points.loc[next_line]['cluster'].values
-                start_node = end_node
-                end_node = connected_nodes[connected_nodes != start_node][0]
-                current_line_nodes.append(end_node)
-
-                connected_lines = cluster_dict[end_node]
-
-                # Remove lines that have already been printed
-                connected_lines = [n for n in valid_lines if n in connected_lines]
-
-            line_order_grouped.append(current_line_lines)
-            for line in current_line_lines:
-                if line in unprinted_lines:
-                    unprinted_lines.remove(line)
-                    valid_lines.remove(line)
-            node_order_grouped.append(current_line_nodes)
-    # print(line_order_grouped)
-    # print("-----next node order grouped-----")
-    # print(node_order_grouped)
-    # print("-----next node order------")
-    # print(node_order)
-    # print("----next line order------")
-    # print(line_order)
-    # print("------------")
-    print(line_order_grouped,"line_order grouped")
+    node_order = [item for sublist in node_path_grouped for item in sublist]
+    print(node_order,"node order")
+    line_order = [item for sublist in edges_grouped for item in sublist]
     print(line_order, "line order")
-    print(node_order, "node order")
-    print(node_order_grouped, "node order grouped")
-    node_path_ungrouped = [item for sublist in node_path_grouped for item in sublist]
-    print(node_path_ungrouped,"node path ungrouped")
-    edges_ungrouped = [item for sublist in edges_grouped for item in sublist]
-    print(edges_ungrouped, "edges ungrouped")
+    line_order_grouped = edges_grouped
+    node_order_grouped = node_path_grouped
     return line_order, node_order, line_order_grouped, node_order_grouped
 
 
