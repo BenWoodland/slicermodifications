@@ -143,7 +143,8 @@ def z_tenth_from_intersection_calculator(intersection, df, line_string):
         end_coord_index = start_coord_index + tenth_of_line
     else:
         end_coord_index = max(0, start_coord_index - tenth_of_line)
-    z_point = line_string.coords[end_coord_index]
+    z_point = Point(line_string.coords[end_coord_index])
+    print(z_point, "zpoint")
     z_value = interpolated_z(z_point, df)
     return z_value
 
@@ -208,10 +209,10 @@ def validator(unprinted_lines, df):
                     if np.isclose(z_current, z_compare, rtol=2e-02, atol=1e-08):
                         angle = angle_calculator(current_line_linestring, compared_line_linestring, intersection)
                         print(f"angle between lines{angle} test line ={line_id_test} compared line = {line_id}")
-                        if (0.01 < angle < 30) or (-0.01> angle> -30):
+                        if (0.02 < angle < 25) or (-0.02> angle> -25):
                             try:
-                                current_z_at20 = z_tenth_from_intersection_calculator(intersection, df, current_line_xyz)
-                                compared_z_at20 = z_tenth_from_intersection_calculator(intersection, df, compared_line_xyz)
+                                current_z_at20 = z_tenth_from_intersection_calculator(intersection, df, current_line_linestring)
+                                compared_z_at20 = z_tenth_from_intersection_calculator(intersection, df, compared_line_linestring)
                                 print(f"current line z at angle{current_z_at20} compared z at angle{compared_z_at20}")
                             except IndexError:
                                 print("index error occured")
@@ -316,6 +317,7 @@ def bridge_check(next_node, start_node, valid_node_link_dict,node_number):
 def recursive_eulerian(node_path, edges, start_node, valid_node_link_dict, node_number, valid_line_cluster_dict):
     for node in valid_node_link_dict[start_node]:
         next_node= node
+
         if bridge_check(next_node, start_node, valid_node_link_dict,node_number):
             line = line_from_nodes(start_node, next_node, valid_line_cluster_dict)
             edges.append(line)
@@ -327,14 +329,22 @@ def recursive_eulerian(node_path, edges, start_node, valid_node_link_dict, node_
             recursive_eulerian(node_path, edges, next_node, valid_node_link_dict, node_number, valid_line_cluster_dict)
             break
         else:
-            line = line_from_nodes(start_node, next_node, valid_line_cluster_dict)
-            edges.append(line)
-            print("appending line", line)
-            node_path.append(next_node)
-            remove_node(valid_node_link_dict, start_node, next_node)
-            remove_line(valid_line_cluster_dict, start_node, next_node, line)
-            # repeat with start node as the next node
-            recursive_eulerian(node_path, edges, next_node, valid_node_link_dict, node_number, valid_line_cluster_dict)
+
+            print("in the else")
+            if start_node == node_path[-1]:
+                print(node_path, "node path form mystery else")
+                print(edges, "edges from mystery else")
+                line = line_from_nodes(start_node, next_node, valid_line_cluster_dict)
+                print(start_node, "start node", next_node, "end node from mystery else")
+                edges.append(line)
+                print("appending line", line)
+                node_path.append(next_node)
+                remove_node(valid_node_link_dict, start_node, next_node)
+                remove_line(valid_line_cluster_dict, start_node, next_node, line)
+                # repeat with start node as the next node
+                recursive_eulerian(node_path, edges, next_node, valid_node_link_dict, node_number, valid_line_cluster_dict)
+            else:
+                break
 
 def fleurys_algorithm(clusters, cluster_dictionary, connectivity_dictionary, valid_lines, edges_grouped, node_path_grouped):
     valid_line_cluster_dict= {}
@@ -349,9 +359,9 @@ def fleurys_algorithm(clusters, cluster_dictionary, connectivity_dictionary, val
         node_number = len(valid_node_link_dict)
 
         filtered = {k: v for k, v in valid_node_link_dict.items() if v not in ('', None,[])}
-
+        print(filtered)
         if filtered:
-            min_key = min(filtered, key=filtered.get)
+            min_key = min(filtered, key=lambda k: len(filtered[k]))
             print(min_key, "minimum key")  # Output: 'e'
         else:
             print("No valid entries")
@@ -446,7 +456,6 @@ def eulerficator(df, terminal_points, nodes):
     node_order_grouped = node_path_grouped
     node_plotter(df, terminal_points)
     return line_order, node_order, line_order_grouped, node_order_grouped
-
 
 def e_calculator(df):
     alpha = 1
