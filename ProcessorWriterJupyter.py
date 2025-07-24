@@ -153,7 +153,7 @@ def validator(unprinted_lines, df):
     valid_lines = []
     # print(f"checking {len(unprinted_lines)}")
     for line_id_test in unprinted_lines:
-        # print(f"test line{line_id_test}")
+        print(f"test line{line_id_test}")
         is_valid = True  # assume valid until proven otherwise
 
         current_line_coords = df[df["line_id"] == line_id_test][["x", "y"]]
@@ -165,83 +165,88 @@ def validator(unprinted_lines, df):
             continue  # skip invalid lines
 
         for line_id in unprinted_lines:
-            # print(f"compared line {line_id}")
+            print(f"compared line {line_id}")
             if line_id == line_id_test:
+                print("line id == line id test")
                 continue
 
             compared_line_coords = df[df["line_id"] == line_id][["x", "y"]]
             compared_line_xyz = df[df["line_id"] == line_id][["x", "y", "z"]]
+            print("compared line coords generated")
 
             if len(compared_line_coords) < 2:
                 print(f"compared line too short line id {line_id}")
                 continue
 
             compared_line_linestring = LineString(compared_line_coords.to_numpy())
+            print("compared line string generated")
 
             if current_line_linestring.intersects(compared_line_linestring):
                 intersection = current_line_linestring.intersection(compared_line_linestring)
 
-                # print(f"test line{line_id_test}intersects with line {line_id} at {intersection}")
+                print(f"test line{line_id_test}intersects with line {line_id} at {intersection}")
                 if isinstance(intersection, GeometryCollection):
                     for geometry in intersection.geoms:
                         if geometry.geom_type == "LineString":
                             try:
                                 current_z_atparallel = current_line_xyz.iloc[min(20, len(current_line_xyz)-1)]["z"]
                                 compared_z_atparallel = compared_line_xyz.iloc[min(20, len(compared_line_xyz)-1)]["z"]
-                                # print(f"current line z at linestring(parallel intersection){current_z_atparallel} compared z at angle{compared_z_atparallel}")
+                                print(f"current line z at linestring(parallel intersection){current_z_atparallel} compared z at angle{compared_z_atparallel}")
                             except IndexError:
                                 print("index error occured")
                                 continue  # skip if not enough points
 
                             if current_z_atparallel >= compared_z_atparallel:
                                 is_valid = False
-                                # print(f"current z above compared z")
+                                print(f"current z above compared z")
                                 break
 
                 if intersection.geom_type == "Point":
                     z_current = interpolated_z(intersection, current_line_xyz)
                     z_compare = interpolated_z(intersection, compared_line_xyz)
-                    # print(f"zvalues of current{z_current} and compare{z_compare}")
+                    print(f"zvalues of current{z_current} and compare{z_compare}")
                     if np.isclose(z_current, z_compare, rtol=2e-02, atol=1e-08):
                         angle = angle_calculator(current_line_linestring, compared_line_linestring, intersection)
-                        # print(f"angle between lines{angle} test line ={line_id_test} compared line = {line_id}")
+                        print(f"angle between lines{angle} test line ={line_id_test} compared line = {line_id}")
                         if (0.01 < angle < 30) or (-0.01> angle> -30):
                             try:
                                 current_z_at20 = z_tenth_from_intersection_calculator(intersection, df, current_line_xyz)
                                 compared_z_at20 = z_tenth_from_intersection_calculator(intersection, df, compared_line_xyz)
-                                # print(f"current line z at angle{current_z_at20} compared z at angle{compared_z_at20}")
+                                print(f"current line z at angle{current_z_at20} compared z at angle{compared_z_at20}")
                             except IndexError:
                                 print("index error occured")
                                 continue  # skip if not enough points
 
                             if current_z_at20 >= compared_z_at20:
                                 is_valid = False
-                                # print(f"current z above compared z")
+                                print(f"current z above compared z")
                                 break
                         else:
                             continue  # no disqualification
-                            # print("not at node")
+                            print("not at node")
                     else:
                         if z_current >= z_compare:
                             is_valid = False
-                            # print("z value of current line is above compared line")
+                            print("z value of current line is above compared line")
                             break
 
                 elif intersection.geom_type == "MultiPoint":
+                    print("multipoint")
                     for pt in intersection.geoms:
                         z_current = interpolated_z(pt, current_line_xyz)
-                        # print(z_current,"z_current")
+                        print(z_current,"z_current")
                         z_compare = interpolated_z(pt, compared_line_xyz)
-                        # print(z_compare, "z_compare")
+                        print(z_compare, "z_compare")
                         if z_current > z_compare + 0.07:
                             is_valid = False
+                            print("not valid")
                             break
                     if not is_valid:
+                        print("random thing")
                         break
-            # else:
-            #     # If far enough, no conflict
-            #     if current_line_linestring.distance(compared_line_linestring) > 0.5:
-            #         continue
+            else:
+                print("final else")
+                is_valid = True
 
         if is_valid:
             valid_lines.append(line_id_test)
@@ -439,6 +444,7 @@ def eulerficator(df, terminal_points, nodes):
     print(line_order, "line order")
     line_order_grouped = edges_grouped
     node_order_grouped = node_path_grouped
+    node_plotter(df, terminal_points)
     return line_order, node_order, line_order_grouped, node_order_grouped
 
 
