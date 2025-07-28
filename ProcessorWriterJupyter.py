@@ -6,6 +6,7 @@ from shapely.geometry import GeometryCollection,LineString, Point, MultiPoint
 
 pd.options.mode.chained_assignment = None  # default='warn'
 import matplotlib.pyplot as plt
+import matplotlib.patheffects as path_effects
 import numpy as np
 from scipy.spatial import distance as dist
 import scipy.cluster.hierarchy as hier
@@ -213,7 +214,7 @@ def validator(unprinted_lines, df):
 
                             if current_z_atparallel > compared_z_atparallel + 0.03:
                                 is_valid = False
-                                print(f"current z above compared z")
+                                print(f"INVALID current z above compared z")
                                 break
 
                 if intersection.geom_type == "Point":
@@ -234,7 +235,7 @@ def validator(unprinted_lines, df):
 
                             if current_z_at20 >= compared_z_at20 + 0.03:
                                 is_valid = False
-                                print(f"current z above compared z")
+                                print(f"INVALID current z above compared z")
                                 break
                         else:
                             continue  # no disqualification
@@ -242,7 +243,7 @@ def validator(unprinted_lines, df):
                     else:
                         if z_current >= z_compare:
                             is_valid = False
-                            print("z value of current line is above compared line")
+                            print("INVALID z value of current line is above compared line")
                             break
 
                 elif intersection.geom_type == "MultiPoint":
@@ -254,7 +255,7 @@ def validator(unprinted_lines, df):
                         print(z_compare, "z_compare")
                         if z_current > z_compare + 0.07:
                             is_valid = False
-                            print("not valid")
+                            print("INVALID not valid")
                             break
                     if not is_valid:
                         print("random thing")
@@ -614,14 +615,13 @@ def node_plotter(df, terminal_points):
         ax.text(x_mid, y_mid, z_mid, str(n), fontsize=9, color='black')
 
     # Plot and label terminal points
-    for n in np.unique(terminal_points['cluster'].values):
+    for n in np.unique(terminal_points['cluster'].values.astype(int)):
         cluster_data = terminal_points[terminal_points['cluster'] == n]
-        ax.scatter(cluster_data['x'], cluster_data['y'], cluster_data['z'])
+        first_row = cluster_data.iloc[0]  # or use .mean() if you want the centroid
 
-        for _, row in cluster_data.iterrows():
-            ax.text(row['x'], row['y'], row['z'], str(row['cluster']),
-                    fontsize=8, color='red', zorder=10)
-
+        ax.text(first_row['x'], first_row['y'], first_row['z'], str(int(first_row['cluster'])),
+                fontsize=8, color='black', zorder=10,
+                bbox=dict(facecolor='white', edgecolor='black', alpha=0.5, boxstyle='square,pad=0.2'))
     ax.view_init(elev=30, azim=60)
     plt.show()
 
@@ -823,7 +823,7 @@ G1 Z{} F200""".format(5+df['z'].max())
 # File settings
 filedir = './Rhino/'  # Directory of the file you're loading
 # Name of the output file
-filename ='VesselBranched6.txt'   # Name of the file you're loading
+filename ='3DPrint_Test_Vessel.txt'   # Name of the file you're loading
 fileout = 'Failure_Intersection_Test3.gcode'
 
 # Print settings
@@ -872,3 +872,4 @@ ax.set_title('3D Line Plot Grouped by line_id')
 ax.legend()
 plt.tight_layout()
 plt.show()
+
