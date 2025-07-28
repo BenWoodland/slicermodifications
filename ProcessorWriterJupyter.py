@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.spatial import distance as dist
 import scipy.cluster.hierarchy as hier
+import copy
 
 np.seterr(invalid='ignore')  # Suppress divide by zero error
 
@@ -67,7 +68,20 @@ def distance_calculator(df):
     distances = np.sqrt(dx ** 2 + dy ** 2 + dz ** 2)
     df['distance_from_last'] = distances
     return df
+def select_min_key(d):
+    # Step 1: Keys with odd-length lists
+    odd_keys = [k for k in d if len(d[k]) % 2 == 1]
 
+    if odd_keys:
+        # Return the key with the shortest odd-length list
+        return min(odd_keys, key=lambda k: len(d[k]))
+    else:
+        # Step 2: If no odd-length lists, get keys with even-length lists
+        even_keys = [k for k in d if len(d[k]) % 2 == 0]
+        if even_keys:
+            return min(even_keys, key=lambda k: len(d[k]))
+        else:
+            return None  # In case all lists are empty or something went wrong
 
 def vector_calculator(line_string, intersection):
     line_length =len( line_string.coords)
@@ -197,7 +211,7 @@ def validator(unprinted_lines, df):
                                 print("index error occured")
                                 continue  # skip if not enough points
 
-                            if current_z_atparallel >= compared_z_atparallel:
+                            if current_z_atparallel > compared_z_atparallel + 0.03:
                                 is_valid = False
                                 print(f"current z above compared z")
                                 break
@@ -218,7 +232,7 @@ def validator(unprinted_lines, df):
                                 print("index error occured")
                                 continue  # skip if not enough points
 
-                            if current_z_at20 >= compared_z_at20:
+                            if current_z_at20 >= compared_z_at20 + 0.03:
                                 is_valid = False
                                 print(f"current z above compared z")
                                 break
@@ -296,55 +310,73 @@ def depth_first_search(next_node, valid_node_link_dict, visited):
 
 def bridge_check(next_node, start_node, valid_node_link_dict,node_number):
     if len(valid_node_link_dict[start_node]) == 1:
-        return True
-
-    visited = {key:False for key in valid_node_link_dict }
+        return True, 0
+    node_link_copy = copy.deepcopy(valid_node_link_dict)
+    visited = {key:False for key in node_link_copy}
     count1 = 0
-    depth_first_search(next_node, valid_node_link_dict, visited)
+    depth_first_search(next_node, node_link_copy, visited)
     count1 = sum(1 for value in visited.values() if value is True)
 
-    remove_node(valid_node_link_dict, start_node, next_node)
+    remove_node(node_link_copy, start_node, next_node)
 
-    visited = {key:False for key in valid_node_link_dict }
+    visited = {key:False for key in node_link_copy }
     count2 = 0
-    depth_first_search(start_node, valid_node_link_dict, visited)
+    depth_first_search(start_node, node_link_copy, visited)
     count2 = sum(1 for value in visited.values() if value is True)
 
-    valid_node_link_dict[start_node].append(next_node)
-    valid_node_link_dict[next_node].append(start_node)
+    node_link_copy[start_node].append(next_node)
+    node_link_copy[next_node].append(start_node)
     print("count 1", count1, "count2", count2)
-    return count1 == count2
+    print(f"Returning from bridge_check: {(count1 == count2, count2)}")
+    return (count1 == count2), count2
 def recursive_eulerian(node_path, edges, start_node, valid_node_link_dict, node_number, valid_line_cluster_dict):
+    if not valid_node_link_dict.get(start_node):
+        print(f"No more connections from {start_node}. Ending recursion.")
+        return
+    any_bridge_passed = False
+
+    count2_map = {}
+
     for node in valid_node_link_dict[start_node]:
+        print(valid_node_link_dict[start_node], "valid node connections dictionary")
         next_node= node
-
-        if bridge_check(next_node, start_node, valid_node_link_dict,node_number):
-            line = line_from_nodes(start_node, next_node, valid_line_cluster_dict)
-            edges.append(line)
-            print("appending line", line)
-            node_path.append(next_node)
-            remove_node(valid_node_link_dict, start_node, next_node)
-            remove_line(valid_line_cluster_dict, start_node, next_node, line)
-            #repeat with start node as the next node
-            recursive_eulerian(node_path, edges, next_node, valid_node_link_dict, node_number, valid_line_cluster_dict)
-            break
-        else:
-
-            print("in the else")
+        print(next_node, "next node")
+        passed_bridge, count2 = bridge_check(next_node, start_node, valid_node_link_dict, node_number)
+        if count2 is not None:
+            count2_map[next_node] = count2
+        if passed_bridge:
+            any_bridge_passed = True
             if start_node == node_path[-1]:
-                print(node_path, "node path form mystery else")
-                print(edges, "edges from mystery else")
+                print(node_path, "node path if passed bridge")
+                print(start_node, "start node", next_node, "next node")
                 line = line_from_nodes(start_node, next_node, valid_line_cluster_dict)
-                print(start_node, "start node", next_node, "end node from mystery else")
                 edges.append(line)
                 print("appending line", line)
                 node_path.append(next_node)
                 remove_node(valid_node_link_dict, start_node, next_node)
                 remove_line(valid_line_cluster_dict, start_node, next_node, line)
-                # repeat with start node as the next node
+                #repeat with start node as the next node
                 recursive_eulerian(node_path, edges, next_node, valid_node_link_dict, node_number, valid_line_cluster_dict)
-            else:
                 break
+    if not any_bridge_passed:
+        if count2_map:
+            next_node = min(count2_map, key=count2_map.get)
+        else:
+
+            next_node = valid_node_link_dict[start_node][0]
+        if start_node == node_path[-1]:
+            print(node_path, "node path from no bridge passed")
+            print(edges, "edges from no bridge passed")
+            line = line_from_nodes(start_node, next_node, valid_line_cluster_dict)
+            print(start_node, "start node", next_node, "end node from no bridge passed")
+            edges.append(line)
+            print("appending line", line)
+            node_path.append(next_node)
+            remove_node(valid_node_link_dict, start_node, next_node)
+            remove_line(valid_line_cluster_dict, start_node, next_node, line)
+            # repeat with start node as the next node
+            recursive_eulerian(node_path, edges, next_node, valid_node_link_dict, node_number, valid_line_cluster_dict)
+
 
 def fleurys_algorithm(clusters, cluster_dictionary, connectivity_dictionary, valid_lines, edges_grouped, node_path_grouped):
     valid_line_cluster_dict= {}
@@ -361,8 +393,8 @@ def fleurys_algorithm(clusters, cluster_dictionary, connectivity_dictionary, val
         filtered = {k: v for k, v in valid_node_link_dict.items() if v not in ('', None,[])}
         print(filtered)
         if filtered:
-            min_key = min(filtered, key=lambda k: len(filtered[k]))
-            print(min_key, "minimum key")  # Output: 'e'
+            min_key = select_min_key(filtered)
+
         else:
             print("No valid entries")
             break
@@ -568,19 +600,29 @@ def node_plotter(df, terminal_points):
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
 
+    # Plot and label lines
     for n in np.unique(df['line_id'].values):
-        ax.plot(df[df['line_id'] == n]['x'], df[df['line_id'] == n]['y'], df[df['line_id'] == n]['z'])
+        line_data = df[df['line_id'] == n]
+        ax.plot(line_data['x'], line_data['y'], line_data['z'])
 
-    # If you need a specific line plotting
-    # n = 2
-    # ax.plot(df[df['line_id'] == n]['x'], df[df['line_id'] == n]['y'], df[df['line_id'] == n]['z']
+        # Add label at the midpoint of the line
+        mid_index = len(line_data) // 2
+        x_mid = line_data['x'].values[mid_index]
+        y_mid = line_data['y'].values[mid_index]
+        z_mid = line_data['z'].values[mid_index]
 
+        ax.text(x_mid, y_mid, z_mid, str(n), fontsize=9, color='black')
+
+    # Plot and label terminal points
     for n in np.unique(terminal_points['cluster'].values):
-        ax.scatter(terminal_points[terminal_points['cluster'] == n]['x'],
-                   terminal_points[terminal_points['cluster'] == n]['y'],
-                   terminal_points[terminal_points['cluster'] == n]['z'])
+        cluster_data = terminal_points[terminal_points['cluster'] == n]
+        ax.scatter(cluster_data['x'], cluster_data['y'], cluster_data['z'])
 
-    ax.view_init(elev=30, azim=60)  # Elevation of 30 degrees, azimuth of 45 degrees
+        for _, row in cluster_data.iterrows():
+            ax.text(row['x'], row['y'], row['z'], str(row['cluster']),
+                    fontsize=8, color='red', zorder=10)
+
+    ax.view_init(elev=30, azim=60)
     plt.show()
 
 
@@ -781,7 +823,7 @@ G1 Z{} F200""".format(5+df['z'].max())
 # File settings
 filedir = './Rhino/'  # Directory of the file you're loading
 # Name of the output file
-filename ='Failure_Intersection_Test3.txt'   # Name of the file you're loading
+filename ='VesselBranched6.txt'   # Name of the file you're loading
 fileout = 'Failure_Intersection_Test3.gcode'
 
 # Print settings
@@ -811,18 +853,16 @@ import numpy as np
 fig = plt.figure(figsize=(10, 8))
 ax = fig.add_subplot(111, projection='3d')
 
-# Define markers and colors
-markers = ['o', '^', 's', 'D', '*', 'v', 'x', 'p', '+']
+# Define colors (markers removed)
 colors = plt.cm.tab10.colors
 
-# Plot each line_id separately
+# Plot each line_id as a continuous line
 for idx, (line_id, group) in enumerate(df.groupby('line_id')):
-    marker = markers[idx % len(markers)]
     color = colors[idx % len(colors)]
     ax.plot(group['x'], group['y'], group['z'],
             label=f'Line {line_id}',
-            marker=marker,
-            color=color)
+            color=color,
+            linewidth=2)  # Optional: make lines more visible
 
 # Labels and legend
 ax.set_xlabel('X')
