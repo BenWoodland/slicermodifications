@@ -606,7 +606,7 @@ def node_plotter(df, terminal_points, line_order, node_order):
     # === Parameters ===
     n_interp = 50  # Interpolated points per segment
 
-    # === interpolate  line segment ===
+    # === Helper: interpolate a line segment ===
     def interpolate_line(line_data, n_points=50):
         t = np.linspace(0, 1, len(line_data))
         fx = interp1d(t, line_data['x'], kind='linear')
@@ -615,33 +615,34 @@ def node_plotter(df, terminal_points, line_order, node_order):
         t_new = np.linspace(0, 1, n_points)
         return np.vstack((fx(t_new), fy(t_new), fz(t_new))).T
 
-    # === start and end nodes to line IDs ===
-    edge_to_line = {
-        tuple([node_order[line_order.index(line)], node_order[line_order.index(line) + 1]]): line
-        for line in line_order
-    }
+    # === Auto-map terminal edges to line IDs ===
+    terminal_edges = list(zip(node_order[:-1], node_order[1:]))
+    print(terminal_edges)
+    print(line_order)
+    # if len(terminal_edges) != len(line_order):
+    #     raise ValueError("Number of terminal edges must match number of lines")
+
+    edge_to_line = list(zip(terminal_edges, line_order))
     print("edge to line", edge_to_line)
 
-    # === line segments in order and direction ===
-    terminal_edges = list(zip(node_order[:-1], node_order[1:]))
+    # === Build line segments in correct order and direction ===
+    print("Edge to line mapping:")
+    for edge, line in edge_to_line:
+        print(f"{edge} -> line {line}")
     line_segments = []
     print("terminal edges", terminal_edges)
 
-    for start_cluster, end_cluster in terminal_edges:
-        line_id = edge_to_line.get((start_cluster, end_cluster))
-        if line_id is None:
-            print(f"Warning: No line found between {start_cluster} and {end_cluster}")
-            continue
 
+    for (start_cluster, end_cluster), line_id in edge_to_line:
         line_data = df[df['line_id'] == line_id].reset_index(drop=True)
         if len(line_data) < 2:
             continue
 
-        #  terminal coordinates
+        # Get terminal coordinates
         start_coords = terminal_points[terminal_points['cluster'] == start_cluster][['x', 'y', 'z']].iloc[0].values
         end_coords = terminal_points[terminal_points['cluster'] == end_cluster][['x', 'y', 'z']].iloc[0].values
 
-        #  current line direction
+        # Get current line direction
         line_start = line_data[['x', 'y', 'z']].iloc[0].values
         line_end = line_data[['x', 'y', 'z']].iloc[-1].values
 
@@ -651,7 +652,7 @@ def node_plotter(df, terminal_points, line_order, node_order):
         if dist_end < dist_start:
             line_data = line_data.iloc[::-1].reset_index(drop=True)
 
-        # Interpolate 
+        # Interpolate and store
         pts = interpolate_line(line_data, n_points=n_interp)
         line_segments.append(pts)
 
@@ -681,16 +682,17 @@ def node_plotter(df, terminal_points, line_order, node_order):
     ax.set_ylim(df['y'].min()-1, df['y'].max()+1)
     ax.set_zlim(df['z'].min()-1, df['z'].max()+1)
 
-    # Set the plot's aspect ratio 
+    # Set the plot's aspect ratio to match the data's scale
+    # This is the key step to prevent exaggerating small variations
     ax.set_box_aspect((x_range, y_range, z_range))
 
     ax.view_init(elev=30, azim=60)
 
-    # === distinct colors based on jumps ===
-    distinct_colors = plt.cm.get_cmap('tab10').colors  
+    # === Assign distinct colors based on jumps ===
+    distinct_colors = plt.cm.get_cmap('tab10').colors  # Up to 10 visually distinct
     n_colors = len(distinct_colors)
     colors = []
-    threshold = 1e-3  # jump definition
+    threshold = 1e-3  # What counts as a jump
     color_index = 0
     colors.append(distinct_colors[color_index % n_colors])
 
@@ -698,7 +700,7 @@ def node_plotter(df, terminal_points, line_order, node_order):
         prev_end = line_segments[i - 1][-1]
         curr_start = line_segments[i][0]
         if np.linalg.norm(prev_end - curr_start) > threshold:
-            color_index += 1  
+            color_index += 1  # New color on jump
         colors.append(distinct_colors[color_index % n_colors])
 
     # === Line plots ===
@@ -728,7 +730,7 @@ def node_plotter(df, terminal_points, line_order, node_order):
     # === Print head (moving marker) ===
     head, = ax.plot([], [], [], marker='o', color='red', markersize=5)
 
-    # === Animation function ===
+    # === Animation update function ===
     def update(frame):
         seg_idx, pt_idx = frame_to_segment[frame]
 
@@ -780,7 +782,7 @@ def node_plotter_2(df, terminal_points):
         line_data = df[df['line_id'] == n]
         ax.plot(line_data['x'], line_data['y'], line_data['z'])
 
-        # label at midpoint of line
+        # Add label at the midpoint of the line
         mid_index = len(line_data) // 2
         x_mid = line_data['x'].values[mid_index]
         y_mid = line_data['y'].values[mid_index]
@@ -997,7 +999,7 @@ G1 Z{} F200""".format(5+df['z'].max())
 # File settings
 filedir = './Rhino/'  # Directory of the file you're loading
 # Name of the output file
-filename ='VesselBranched6.txt'   # Name of the file you're loading
+filename ='3DPrint_Test_Vessel.txt'   # Name of the file you're loading
 fileout = 'Failure_Intersection_Test3.gcode'
 
 # Print settings
@@ -1046,4 +1048,3 @@ ax.set_title('3D Line Plot Grouped by line_id')
 ax.legend()
 plt.tight_layout()
 plt.show()
-
