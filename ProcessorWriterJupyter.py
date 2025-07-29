@@ -7,9 +7,13 @@ from shapely.geometry import GeometryCollection,LineString, Point, MultiPoint
 pd.options.mode.chained_assignment = None  # default='warn'
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as path_effects
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.animation import FuncAnimation
+import matplotlib.cm as cm
 import numpy as np
 from scipy.spatial import distance as dist
 import scipy.cluster.hierarchy as hier
+from scipy.interpolate import interp1d
 import copy
 
 np.seterr(invalid='ignore')  # Suppress divide by zero error
@@ -487,7 +491,7 @@ def eulerficator(df, terminal_points, nodes):
     print(line_order, "line order")
     line_order_grouped = edges_grouped
     node_order_grouped = node_path_grouped
-    node_plotter(df, terminal_points)
+    node_plotter(shapesplitter(df), terminal_points, line_order, node_order)
     return line_order, node_order, line_order_grouped, node_order_grouped
 
 def e_calculator(df):
@@ -596,8 +600,178 @@ def node_finder(df):
     return df, terminal_points, nodes
 
 
-def node_plotter(df, terminal_points):
+def node_plotter(df, terminal_points, line_order, node_order):
     # Plots lines assigning a colour to each line_id
+
+    # === Parameters ===
+    n_interp = 50  # Interpolated points per segment
+
+    # === interpolate  line segment ===
+    def interpolate_line(line_data, n_points=50):
+        t = np.linspace(0, 1, len(line_data))
+        fx = interp1d(t, line_data['x'], kind='linear')
+        fy = interp1d(t, line_data['y'], kind='linear')
+        fz = interp1d(t, line_data['z'], kind='linear')
+        t_new = np.linspace(0, 1, n_points)
+        return np.vstack((fx(t_new), fy(t_new), fz(t_new))).T
+
+    # === start and end nodes to line IDs ===
+    edge_to_line = {
+        tuple([node_order[line_order.index(line)], node_order[line_order.index(line) + 1]]): line
+        for line in line_order
+    }
+    print("edge to line", edge_to_line)
+
+    # === line segments in order and direction ===
+    terminal_edges = list(zip(node_order[:-1], node_order[1:]))
+    line_segments = []
+    print("terminal edges", terminal_edges)
+
+    for start_cluster, end_cluster in terminal_edges:
+        line_id = edge_to_line.get((start_cluster, end_cluster))
+        if line_id is None:
+            print(f"Warning: No line found between {start_cluster} and {end_cluster}")
+            continue
+
+        line_data = df[df['line_id'] == line_id].reset_index(drop=True)
+        if len(line_data) < 2:
+            continue
+
+        #  terminal coordinates
+        start_coords = terminal_points[terminal_points['cluster'] == start_cluster][['x', 'y', 'z']].iloc[0].values
+        end_coords = terminal_points[terminal_points['cluster'] == end_cluster][['x', 'y', 'z']].iloc[0].values
+
+        #  current line direction
+        line_start = line_data[['x', 'y', 'z']].iloc[0].values
+        line_end = line_data[['x', 'y', 'z']].iloc[-1].values
+
+        # Flip line if it starts at the wrong end
+        dist_start = np.linalg.norm(line_start - start_coords)
+        dist_end = np.linalg.norm(line_end - start_coords)
+        if dist_end < dist_start:
+            line_data = line_data.iloc[::-1].reset_index(drop=True)
+
+        # Interpolate 
+        pts = interpolate_line(line_data, n_points=n_interp)
+        line_segments.append(pts)
+
+    # === Build frame-to-segment map ===
+    segment_lengths = [len(seg) for seg in line_segments]
+    frame_to_segment = []
+    for i, length in enumerate(segment_lengths):
+        frame_to_segment += [(i, j) for j in range(length)]
+
+
+    # === Set up plot ===
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Calculate data ranges for aspect ratio
+    x_range = df['x'].max() - df['x'].min()
+    y_range = df['y'].max() - df['y'].min()
+    z_range = df['z'].max() - df['z'].min()
+
+    # Avoid zero-range issues for single points or perfectly flat lines
+    if x_range == 0: x_range = 1
+    if y_range == 0: y_range = 1
+    if z_range == 0: z_range = 1
+
+    # Set axis limits to contain all data
+    ax.set_xlim(df['x'].min()-1, df['x'].max()+1)
+    ax.set_ylim(df['y'].min()-1, df['y'].max()+1)
+    ax.set_zlim(df['z'].min()-1, df['z'].max()+1)
+
+    # Set the plot's aspect ratio 
+    ax.set_box_aspect((x_range, y_range, z_range))
+
+    ax.view_init(elev=30, azim=60)
+
+    # === distinct colors based on jumps ===
+    distinct_colors = plt.cm.get_cmap('tab10').colors  
+    n_colors = len(distinct_colors)
+    colors = []
+    threshold = 1e-3  # jump definition
+    color_index = 0
+    colors.append(distinct_colors[color_index % n_colors])
+
+    for i in range(1, len(line_segments)):
+        prev_end = line_segments[i - 1][-1]
+        curr_start = line_segments[i][0]
+        if np.linalg.norm(prev_end - curr_start) > threshold:
+            color_index += 1  
+        colors.append(distinct_colors[color_index % n_colors])
+
+    # === Line plots ===
+    plot_lines = [
+        ax.plot([], [], [], color=colors[i], linewidth=2)[0]
+        for i in range(len(line_segments))
+    ]
+
+    # === Line ID labels (initially hidden) ===
+    line_labels = []
+    for i, seg in enumerate(line_segments):
+        mid_idx = len(seg) // 2
+        mid_pt = seg[mid_idx]
+        line_id = line_order[i]
+        label = ax.text(mid_pt[0], mid_pt[1], mid_pt[2], str(line_id),
+                        color=colors[i], fontsize=10, visible=False)
+        line_labels.append(label)
+
+    # === Node labels (initially hidden) ===
+    node_labels = {}
+    for cluster in node_order:
+        coords = terminal_points[terminal_points['cluster'] == cluster][['x', 'y', 'z']].iloc[0].values
+        label = ax.text(coords[0], coords[1], coords[2], str(cluster),
+                        color='black', fontsize=9, visible=False)
+        node_labels[cluster] = label
+
+    # === Print head (moving marker) ===
+    head, = ax.plot([], [], [], marker='o', color='red', markersize=5)
+
+    # === Animation function ===
+    def update(frame):
+        seg_idx, pt_idx = frame_to_segment[frame]
+
+        # Draw segments up to current
+        for i in range(seg_idx + 1):
+            seg = line_segments[i]
+            end_idx = pt_idx + 1 if i == seg_idx else len(seg)
+            x = seg[:end_idx, 0]
+            y = seg[:end_idx, 1]
+            z = seg[:end_idx, 2]
+            plot_lines[i].set_data(x, y)
+            plot_lines[i].set_3d_properties(z)
+
+            # Show line label
+            line_labels[i].set_visible(True)
+
+        # Move print head
+        curr_point = line_segments[seg_idx][pt_idx]
+        head.set_data([curr_point[0]], [curr_point[1]])
+        head.set_3d_properties([curr_point[2]])
+
+        # Show node labels as they appear
+        if pt_idx == 0:
+            start_cluster = node_order[seg_idx]
+            node_labels[start_cluster].set_visible(True)
+        if pt_idx == len(line_segments[seg_idx]) - 1:
+            end_cluster = node_order[seg_idx + 1]
+            node_labels[end_cluster].set_visible(True)
+
+        return plot_lines + [head] + line_labels + list(node_labels.values())
+
+    # === Animate ===
+    ani = FuncAnimation(
+        fig,
+        update,
+        frames=len(frame_to_segment),
+        interval=20,
+        blit=False,
+        repeat=False
+    )
+
+    plt.show()
+def node_plotter_2(df, terminal_points):
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
 
@@ -606,7 +780,7 @@ def node_plotter(df, terminal_points):
         line_data = df[df['line_id'] == n]
         ax.plot(line_data['x'], line_data['y'], line_data['z'])
 
-        # Add label at the midpoint of the line
+        # label at midpoint of line
         mid_index = len(line_data) // 2
         x_mid = line_data['x'].values[mid_index]
         y_mid = line_data['y'].values[mid_index]
@@ -624,7 +798,6 @@ def node_plotter(df, terminal_points):
                 bbox=dict(facecolor='white', edgecolor='black', alpha=0.5, boxstyle='square,pad=0.2'))
     ax.view_init(elev=30, azim=60)
     plt.show()
-
 
 def remove_overlap(shape):
     # Checks for any large jumps at the end of a line and, if found, moves the last row to the top
@@ -676,10 +849,11 @@ def shape_prep(settings):
 
     # Find and plot nodes via hierarchical clustering
     df, terminal_points, nodes = node_finder(df)
-    node_plotter(df, terminal_points)
+
 
     line_order, node_order, line_order_grouped, node_order_grouped = eulerficator(df, terminal_points, nodes)
 
+    node_plotter_2(df, terminal_points)
     # Correct line order to run in node order
     df = line_order_corrector(df, line_order, line_order_grouped, nodes, node_order_grouped)
     return df, line_order_grouped
@@ -823,7 +997,7 @@ G1 Z{} F200""".format(5+df['z'].max())
 # File settings
 filedir = './Rhino/'  # Directory of the file you're loading
 # Name of the output file
-filename ='3DPrint_Test_Vessel.txt'   # Name of the file you're loading
+filename ='VesselBranched6.txt'   # Name of the file you're loading
 fileout = 'Failure_Intersection_Test3.gcode'
 
 # Print settings
