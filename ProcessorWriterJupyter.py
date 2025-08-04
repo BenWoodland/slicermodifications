@@ -2,9 +2,10 @@
 import math
 import os
 import pandas as pd
-from shapely.geometry import GeometryCollection,LineString, Point, MultiPoint
+from shapely.geometry import GeometryCollection,LineString, Point, MultiPoint, MultiLineString
 
 pd.options.mode.chained_assignment = None  # default='warn'
+from IPython.display import HTML
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as path_effects
 from mpl_toolkits.mplot3d import Axes3D
@@ -128,7 +129,7 @@ def angle_calculator(line_string_1, line_string_2, intersection):
     return degree_angle
 def interpolated_z(intersection_point, df):
 
-    df["xy_distance"] = np.sqrt((df['x'] - intersection_point.x)**2 + (df['y'] - intersection_point.y)**2)
+    df["xy_distance"] = np.sqrt((df['x'] - Point(intersection_point).x)**2 + (df['y'] - Point(intersection_point).y)**2)
 
     closest_row = df.loc[df["xy_distance"].idxmin()]
     # print(closest_row)
@@ -205,21 +206,57 @@ def validator(unprinted_lines, df):
                 intersection = current_line_linestring.intersection(compared_line_linestring)
 
                 print(f"test line{line_id_test}intersects with line {line_id} at {intersection}")
-                if isinstance(intersection, GeometryCollection):
-                    for geometry in intersection.geoms:
-                        if geometry.geom_type == "LineString":
-                            try:
-                                current_z_atparallel = current_line_xyz.iloc[min(20, len(current_line_xyz)-1)]["z"]
-                                compared_z_atparallel = compared_line_xyz.iloc[min(20, len(compared_line_xyz)-1)]["z"]
-                                print(f"current line z at linestring(parallel intersection){current_z_atparallel} compared z at angle{compared_z_atparallel}")
-                            except IndexError:
-                                print("index error occured")
-                                continue  # skip if not enough points
+                if isinstance(intersection, (GeometryCollection, MultiLineString)):
+                    leng_parallel = sum(1 for g in intersection.geoms if isinstance(g, LineString))
+                    if leng_parallel>2:
+                        for geometry in intersection.geoms:
+                            if geometry.geom_type == "LineString":
+                                try:
+                                    current_z_atparallel = current_line_xyz.iloc[min(20, len(current_line_xyz)-1)]["z"]
+                                    compared_z_atparallel = compared_line_xyz.iloc[min(20, len(compared_line_xyz)-1)]["z"]
+                                    print(f"current line z at linestring(parallel intersection){current_z_atparallel} compared z at angle{compared_z_atparallel}")
+                                except IndexError:
+                                    print("index error occured")
+                                    continue  # skip if not enough points
 
-                            if current_z_atparallel > compared_z_atparallel + 0.03:
-                                is_valid = False
-                                print(f"INVALID current z above compared z")
-                                break
+                                if current_z_atparallel > compared_z_atparallel + 0.03:
+                                    is_valid = False
+                                    print(f"INVALID current z above compared z")
+                                    break
+                    else:
+                        for geometry in intersection.geoms:
+                            if isinstance(geometry, LineString):
+                                for coord in geometry.coords:
+                                    z_current = interpolated_z(coord, current_line_xyz)
+                                    z_compare = interpolated_z(coord, compared_line_xyz)
+                                    print(f"zvalues of current{z_current} and compare{z_compare}")
+                                    if np.isclose(z_current, z_compare, rtol=2e-02, atol=1e-08):
+                                        angle = angle_calculator(current_line_linestring, compared_line_linestring, Point(coord))
+                                        print(f"angle between lines{angle} test line ={line_id_test} compared line = {line_id}")
+                                        if (0.02 < angle < 25) or (-0.02 > angle > -25):
+                                            try:
+                                                current_z_at20 = z_tenth_from_intersection_calculator(coord, df,current_line_linestring)
+
+                                                compared_z_at20 = z_tenth_from_intersection_calculator(coord, df,compared_line_linestring)
+
+                                                print(
+                                                    f"current line z at angle{current_z_at20} compared z at angle{compared_z_at20}")
+                                            except IndexError:
+                                                print("index error occured")
+                                                continue  # skip if not enough points
+
+                                            if current_z_at20 >= compared_z_at20 + 0.03:
+                                                is_valid = False
+                                                print(f"INVALID current z above compared z")
+                                                break
+                                        else:
+                                            continue  # no disqualification
+                                            print("not at node")
+                                    else:
+                                        if z_current >= z_compare:
+                                            is_valid = False
+                                            print("INVALID z value of current line is above compared line")
+                                            break
 
                 if intersection.geom_type == "Point":
                     z_current = interpolated_z(intersection, current_line_xyz)
@@ -491,7 +528,7 @@ def eulerficator(df, terminal_points, nodes):
     print(line_order, "line order")
     line_order_grouped = edges_grouped
     node_order_grouped = node_path_grouped
-    node_plotter(shapesplitter(df), terminal_points, line_order, node_order)
+    node_plotter(shapesplitter(df), terminal_points, line_order, node_order, node_order_grouped)
     return line_order, node_order, line_order_grouped, node_order_grouped
 
 def e_calculator(df):
@@ -600,7 +637,7 @@ def node_finder(df):
     return df, terminal_points, nodes
 
 
-def node_plotter(df, terminal_points, line_order, node_order):
+def node_plotter(df, terminal_points, line_order, node_order, node_order_grouped):
     # Plots lines assigning a colour to each line_id
 
     # === Parameters ===
@@ -616,9 +653,10 @@ def node_plotter(df, terminal_points, line_order, node_order):
         return np.vstack((fx(t_new), fy(t_new), fz(t_new))).T
 
     # === Auto-map terminal edges to line IDs ===
-    terminal_edges = list(zip(node_order[:-1], node_order[1:]))
-    print(terminal_edges)
-    print(line_order)
+    terminal_edges = []
+
+    for sublist in node_order_grouped:
+        terminal_edges.extend(zip(sublist, sublist[1:]))
     # if len(terminal_edges) != len(line_order):
     #     raise ValueError("Number of terminal edges must match number of lines")
 
@@ -999,7 +1037,7 @@ G1 Z{} F200""".format(5+df['z'].max())
 # File settings
 filedir = './Rhino/'  # Directory of the file you're loading
 # Name of the output file
-filename ='3DPrint_Test_Vessel.txt'   # Name of the file you're loading
+filename ='VesselBranched6.txt'   # Name of the file you're loading
 fileout = 'Failure_Intersection_Test3.gcode'
 
 # Print settings
@@ -1048,3 +1086,4 @@ ax.set_title('3D Line Plot Grouped by line_id')
 ax.legend()
 plt.tight_layout()
 plt.show()
+
